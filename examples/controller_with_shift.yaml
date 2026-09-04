@@ -1,0 +1,53 @@
+---
+module: led_controller_with_shift
+inputs: |
+  // no special inputs for this controller
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = 0;
+rst: |
+  led <= 0;
+hex_prefix: 8
+commands:
+- name: LED_CLEAR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_SET_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= data;
+- name: LED_SET_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= data;
+- name: LED_OR_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= led[7:0]|data;
+- name: LED_OR_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= led[15:8]|data;
+- name: LED_NAND_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= led[7:0]&data;
+- name: LED_NAND_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= led[15:8]&data;
+- name: LED_FLOOD
+  databytes: 0
+  verilog: led <= 16'hffff;
+- name: LED_RIGHT_SHIFT
+  databytes: 0
+  verilog: led <= {led[0],led[15:1]};
+- name: LED_LEFT_SHIFT
+  databytes: 0
+  verilog: led <= {led[14:0],led[15]};
+program: |
+  0:	LED_SET_LOW_BYTE  # set 0-7
+  1:	01		  # one light on
+  2:	LED_SET_HIGH_BYTE # set 8-16
+  3:	00		  # no lights on
+  4:	LED_LEFT_SHIFT	  # rotate light
+  5:	SLEEP_MS 	  # pause
+  6:	20     		  # 20ms
+  7: 	JUMP   		  # loop back
+  8:	04      	  # to left shift cmd
+...

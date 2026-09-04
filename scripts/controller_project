@@ -1,0 +1,100 @@
+#!/bin/bash
+##==========================================================##
+## controller_project
+##
+## script to translate a YAML-formatted project into a
+## directory tree with source files. Meant to be used
+## with the output from the Julia command
+## generate_controller_project. See Isabella.jl for more
+## details.
+##
+## usage: controller_project <yaml_filename>
+##
+##===========================================================##
+
+
+yaml_src_file=`basename $1`
+project_name=${yaml_src_file%.yaml}
+
+
+
+printf "\n"
+printf "Project definition:     $yaml_src_file\n"
+printf "Project directory:      $project_name\n\n"
+
+if [ -d $project_name ]; then
+   read -p "Directory $project_name/ exists. Overwrite? (y/n): " yn
+   if [ "$yn" != "y" ]; then
+       printf "Exiting now.\n"
+       exit 0
+   fi
+fi
+
+
+function check_project_path() {
+    realfilename=`realpath -m "$1"`
+    currentdir=`realpath -e .`
+    
+    relativepath=${realfilename#$currentdir/}
+
+    printf "\n--- checking name [$1] -- relativepath=[$relativepath]\n"
+    if [ "$relativepath" == "$1" ]; then
+	return 0
+    else
+	return 1
+    fi
+}
+
+
+function check_filename() {
+
+    bname=`basename "$1"`
+    if [[ ! "$bname" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+       printf "\n--- filename [$1] contains bad characters\n"
+	return 1
+    fi
+
+    tempname=`printf "%s/%s" "$project_name" "$1"`
+    realfilename=`realpath -m "$tempname"`
+    currentdir=`realpath -e .`
+    a=${realfilename#$currentdir/}
+    b=${a#$project_name/}
+
+    printf "\n--- [$b] == [$1] ? ---\n"
+    # Verify that the realfilename is within currentdir
+    if [ "$b" != "$1" ]; then
+	return 1
+    fi
+    return 0
+}
+
+
+check_project_path "$project_name"
+if [ $? != 0 ]; then
+    printf "\n\nERROR project name $project_name is not valid.\n\n"
+    exit 1
+fi
+
+mkdir -p $project_name/doc
+mkdir -p $project_name/inc
+mkdir -p $project_name/src
+mkdir -p $project_name/programs
+
+yaml=`cat $1`
+num_filenames=`echo "$yaml" | yq 'length'`
+
+for i in $(seq 0 $(( $num_filenames-1 )) ); do
+    filename=`echo "$yaml" | yq --raw-output .[$i].filename`
+
+    check_filename "$filename"
+    if [ $? == 0 ]; then
+	contents=`echo "$yaml" | yq --raw-output .[$i].contents`
+	echo "$contents" > "$project_name/$filename"
+    else
+	printf "\n\nERROR something wrong with filename $filename\n\n"
+	exit 1
+    fi
+done
+
+
+	

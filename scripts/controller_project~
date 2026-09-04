@@ -1,0 +1,12 @@
+#!/bin/bash
+
+yaml_src_file=`basename $1`
+project_name=${1%.yaml}
+
+if [ -d $project_name ]; then
+   read -p "Directory $project_name/ exists. Overwrite? (y/n): " -v yn
+   if [ "$yn" != "y" ]; then
+       exit 0
+   fi
+fi
+

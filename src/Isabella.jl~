@@ -1,0 +1,500 @@
+using ArgParse
+using YAML
+
+function parse_commandline()
+    s = ArgParseSettings()
+    @add_arg_table s begin
+        "--commands", "-c"
+        arg_type = Union{String,Nothing}
+        help = "Specify YAML file with command definitions"
+        default = nothing
+        "--top", "-t"
+        help = "Specify YAML file with top module definitions"
+        arg_type = Union{String,Nothing}
+        default = nothing
+        "--test", "-b"
+        help = "Generate a testbench file"
+        action = :store_true
+        "--project", "-p"
+        help = "Generate project sources for controller"
+        "--instantate", "-i"
+        arg_type = String
+        help="Generate instantiation template for specified module"
+    end
+
+    parse_args(s)
+
+end
+
+data = YAML.load_file("test.yaml")
+
+
+function flowCommandCodes() 
+    s=string("""localparam NULL_CMD  = 8'h00;
+localparam SLEEP_US  = 8'h01;
+localparam SLEEP_MS  = 8'h02;
+localparam SLEEP_S   = 8'h03;
+localparam JUMP      = 8'h04;
+""")
+    return s
+end
+
+
+    
+function flowCommandSource()
+    return string("""NULL_CMD: begin
+   state <= WAIT;
+end 
+SLEEP_US: begin
+   timerUnits <= 0;
+   padr++;
+   
+   state <= DATA_BYTE;
+end
+SLEEP_MS: begin
+   timerUnits <= 1;
+   padr++;
+   state <= DATA_BYTE;
+end
+SLEEP_S: begin
+   timerUnits <= 2;
+   padr++;
+   state <= DATA_BYTE;
+end 
+JUMP: begin
+   if (data_bytes == 1) begin
+      state <= CMD_START;
+      padr  <= data;
+      cmd   <= pmem[data];
+      data_bytes <= 0;
+   end
+   else begin
+      padr <= padr + 1;      
+      state <= DATA_BYTE;
+   end
+   
+end
+""")
+end
+
+
+# assign hex codes to commands
+function generateCommandCodes(data)
+    pfx=data["hex_prefix"]
+    n=0
+
+    for x in data["commands"]
+        x["hex"] = string(pfx,n)
+        n=n+1
+    end
+end
+
+
+function printCommandCodeTable(data)
+    s=string("")
+    for x in data["commands"]
+        #println(x["name"],"\t",x["hex"]
+        s=string(s,x["name"],"\t",x["hex"],"\n")        
+    end
+    return s
+end
+
+
+function commandCodeDict(data)
+    d=Dict{String,String}()
+
+    d["JUMP"]="04"
+    d["NULL_CMD"]="00"
+    d["SLEEP_US"]="01"
+    d["SLEEP_MS"]="02"
+    d["SLEEP_S"]="03"
+    
+    for x in data["commands"]
+        d[x["name"]]=x["hex"]
+    end
+    return d
+end
+
+
+function translateProgram(data,d)
+    s=String("")
+    a=data["program"]
+    p=split(a,"\n")
+    
+    for x in p
+        r=Regex("([[:digit:]]+):[[:space:]]+([A-Z_0-9]+)[[:space:]]+(.*)")
+        m=match(r,x,1)
+        
+        if (m!=nothing)
+            c=m.captures;
+            if (haskey(d,c[2]))
+                s=string(s,d[c[2]],"\n")
+            else
+                s=string(s,c[2],"\n")
+            end
+        end
+    end
+    for n in 1:(255-length(p))
+        s=string(s,"00\n")
+    end
+    s=string(s,"00")
+    return s
+end
+
+
+function generateVerilog(data)
+    s=string("""
+`timescale 1ns/1ps
+
+module """,data["module"],"""
+  (
+   input 	     clk,
+   input 	     rst,
+   input 	     intr,
+   input [7:0] 	     iadr,
+   output reg 	     ready,
+""",data["inputs"],data["outputs"],"""
+   );
+   
+   // program memory
+   reg [7:0] 	     pmem[255:0];
+
+   
+   reg [2:0] 	     state;
+   reg [7:0] 	     padr;  // program memory address pointer
+   reg [7:0] 	     cmd;   // command code register
+   reg [7:0] 	     data;  // data byte register
+
+   reg [7:0] 	     data_bytes; // count of data bytes retrieved
+
+   // timer signals
+   reg [7:0] 	     duration;
+   reg 		     tclr;
+   wire 	     t;
+   reg [1:0] 	     timerUnits;
+   
+   localparam WAIT      = 0;
+   localparam CMD_START = 1;
+   localparam CMD_DONE  = 2;
+   localparam DATA_BYTE = 3;
+   localparam SLEEP     = 4;
+
+   // import list of command codes and aliases:
+   `include "inc/flow_command_codes.sv"
+   `include "inc/""",data["module"],"""_command_codes.sv"
+
+   initial begin
+      state = WAIT;
+      ready = 0;
+      timerUnits = 0; // default micro-seconds
+      \$readmemh("programs/""",data["module"],"""_program.mem",pmem,0,255);
+      """,data["initial"],"""
+   end   
+
+   timer T1
+     (
+      .clk(clk),
+      .clr(tclr),
+      .duration(duration),
+      .t(t),
+      .scale(timerUnits)
+      );
+   
+   
+   always @(posedge clk) begin
+      if (rst) begin
+	 ready <= 0;
+	 state <= WAIT;
+	 tclr <= 1;
+	 padr <= 0;
+         """,data["rst"],"""
+      end
+      else begin
+      case (state)
+	WAIT: begin
+	   tclr  <= 1; // Reset the timer
+	   cmd   <= pmem[iadr];
+	   data_bytes <= 0;
+	   
+	   // a new "interrupt" arrives
+	   if (intr) begin
+	      padr  <= iadr;
+
+	      state <= CMD_START;
+	      ready <= 0;
+	   end
+	   else
+	     ready <= 1;
+	end
+	CMD_START: begin
+	   ready <= 0;
+	   
+	   case (cmd)
+	     // import program control commands
+             `include "inc/flow_commands.sv"
+             `include "inc/""",data["module"],"""_commands.sv"
+	   endcase
+	end
+	CMD_DONE: begin
+	   ready <= 0;
+	   
+	   padr       <= padr + 1;
+	   cmd        <= pmem[padr + 1];
+	   data_bytes <= 0;
+	   state      <= CMD_START;
+	end
+	DATA_BYTE: begin
+	   ready <= 0;
+	   
+	   //padr <= padr + 1;
+	   data <= pmem[padr];
+	   data_bytes <= data_bytes + 1;
+	   if (cmd == SLEEP_US || cmd == SLEEP_MS || cmd == SLEEP_S) begin
+	      state <= SLEEP;
+	   end
+	   else begin
+	     state <= CMD_START;
+           end
+	end
+	SLEEP: begin
+
+	   
+	   if (intr) begin
+	      ready <= 0;
+	      padr  <= iadr;
+	      cmd   <= pmem[iadr];
+	      state <= CMD_START;
+	      tclr  <= 1;
+	      data <= 0;
+	      data_bytes <= 0;
+	   end
+	   else if (t) begin
+	      tclr <= 1;
+	      cmd <= pmem[padr+1];
+              padr++;
+	      data_bytes <= 0;
+	      ready <= 0;	      
+	      state <= CMD_START;
+	   end
+	   else begin
+	      ready <= 1;	      
+	      tclr <= 0;
+	      duration <= data;
+	   end
+	end
+      endcase
+   end
+   end
+
+endmodule
+""")     
+
+    return s
+end
+
+
+function generateCommandSource(data)
+    s=string("")
+    
+    for x in data["commands"]
+        s=string(s,x["name"],""": begin
+       //padr++;
+       if (data_bytes==""",x["databytes"],""") begin
+""",x["verilog"],"""
+      state <= CMD_DONE;
+   end
+   else begin
+      padr++;
+      state<=DATA_BYTE;
+   end
+end
+""")
+    end
+    return s
+end
+
+function printCommandCodeParameters(data)
+    s = string("")
+    for x in data["commands"]
+        s = string(s,"localparam ", x["name"], " = 8'h", x["hex"],";\n")
+    end
+    return s
+end
+
+function parseDownto(s)
+    n=1
+    if (s != nothing)
+        r=r"\[([[:digit:]]+):0\]"
+        m=match(r,s,1)
+        n=1+parse(Int64,m.captures[1])
+    end
+    return n
+end
+
+
+
+function parseDeclaration(s)
+    r=r"(input|output)[[:space:]]+(reg)?[[:space:]]*(\[[^[:space:]]+\])?[[:space:]]*([^[:space:],\[\]]+)(\[[^,]+\])?,?"
+    m=match(r,s,1)
+    if (m != nothing)
+        portdirection=m.captures[1]
+        portbits=m.captures[3]
+        portname=m.captures[4]
+        portdepth=m.captures[5]
+        
+        width=parseDownto(portbits)
+        depth=parseDownto(portdepth)
+        
+        d=Dict{String,Union{Nothing,String}}("direction"=>portdirection,"name"=>portname,"width"=>string(width),"depth"=>string(depth))
+        return d
+    else
+        return nothing
+    end
+end
+
+
+function analyzePorts(data)
+    inputString=data["inputs"]
+    inports=split(inputString,"\n")
+    data["inputPorts"]=Vector{Dict{String,Union{Nothing,String}}}()
+    for x in inports
+        d=parseDeclaration(x)
+        if (d != nothing)
+            push!(data["inputPorts"],d)
+        end
+    end
+
+    outputString=data["outputs"]
+    outports=split(outputString,"\n")
+    data["outputPorts"]=Vector{Dict{String,Union{Nothing,String}}}()
+    for x in outports
+        d=parseDeclaration(x)
+        if (d != nothing)
+            push!(data["outputPorts"],d)
+        end
+    end
+end
+
+
+
+function portConnections(data)
+    s=string("")
+    for x in data["inputPorts"]
+        s=string(s,"     .",x.name,"(",x.name,"),\n")
+    end
+    for x in data["outputPorts"]
+        s=string(s,"     .",x.name,"(",x.name,"),\n")
+    end
+    return s
+end
+
+
+function portSignals(data)
+    s=string("")
+    for x in data["inputPorts"]
+        s=string(s,"   reg ")
+        if (x.width>1)
+            s=string(s,"[",x.width-1,":0] ",x.name,";\n")
+        end
+    end
+    for x in data["outputPorts"]
+        s=string(s,"   wire ")
+        if (x.width>1)
+            s=string(s,"[",x.width-1,":0] ",x.name,";\n")
+        end
+    end
+    return s
+end
+
+
+function makeTopModule(data)
+    s=string("""
+`timescale 1ns/1ps
+
+
+module  top 
+(
+ input 	       clk,
+ // finish declaring I/O ports
+ );
+
+   wire [7:0]  iadr = 0;
+
+   wire        ready;
+   wire        intr;
+   wire        rst;
+""",portSignals(data),"\n\n",data["module"]," ",data["module"],"_inst","""
+     (
+      .clk(clk),
+      .rst(rst),
+""",portConnections(data),"""
+      .intr(intr),
+      .iadr(iadr),
+      .ready(ready)
+      );
+
+endmodule
+""")
+    return s
+end
+
+
+function generateControllerProject(data)
+    generateCommandCodes(data)
+    tbl=printCommandCodeTable(data)
+    docname=string("doc/",data["module"],"_commands.md")
+    open(docname,"w") do file
+        write(file,tbl)
+    end
+
+    d=commandCodeDict(data)
+    s=translateProgram(data,d)
+    programfile=string("programs/",data["module"],"_program.mem")
+    open(programfile,"w") do file
+        write(file,s)
+    end
+
+    srcname=string("src/",data["module"],".sv")
+    src=generateVerilog(data)
+    open(srcname,"w") do file
+        write(file,src)
+    end
+
+    params=printCommandCodeParameters(data)
+    codefile=string("inc/",data["module"],"_command_codes.sv")
+    open(codefile,"w") do file
+        write(file,params)
+    end
+
+    cmd=generateCommandSource(data)
+    cmdfile=string("inc/",data["module"],"_commands.sv")
+    open(cmdfile,"w") do file
+        write(file,cmd)
+    end
+
+    flowsrc=flowCommandSource()
+    open("inc/flow_commands.sv","w") do file
+        write(file,flowsrc)
+    end
+
+
+    flowcodes=flowCommandCodes()
+    open("inc/flow_command_codes.sv","w") do file
+        write(file,flowcodes)
+    end
+end
+
+
+
+    
+
+function main()
+    parsed_args = parse_commandline()
+    println("Parsed args:")
+    for (arg,val) in parsed_args
+        println("  $arg  =>  $val")
+    end
+end
+
+
+main()
