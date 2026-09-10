@@ -2,3 +2,11 @@ name = "Isabella"
 uuid = "7581a2d9-7336-43fd-a366-50070be993c4"
 version = "0.1.0"
 authors = ["Chris Winstead <chris.winstead@usu.edu>"]
+
+[deps]
+ArgParse = "c7e460c6-2fb9-53a9-8c5b-16f535851c63"
+YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+ArgParse = "1.2.0"
+YAML = "0.4.16"
