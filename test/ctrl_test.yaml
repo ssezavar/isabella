@@ -1,0 +1,41 @@
+---
+# Fast variant of the shipped LED demo: microsecond sleeps instead of
+# milliseconds, so a full loop simulates in a reasonable time.
+# Data bytes written with an explicit radix to exercise the G4 parsing.
+module: ctrl_test
+inputs: |
+  // no special inputs
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = 0;
+rst: |
+  led <= 0;
+hex_prefix: 8
+commands:
+- name: LED_CLEAR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_SET_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= data;
+- name: LED_SET_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= data;
+- name: LED_FLOOD
+  databytes: 0
+  verilog: led <= 16'hffff;
+- name: LED_LEFT_SHIFT
+  databytes: 0
+  verilog: led <= {led[14:0],led[15]};
+program: |
+  0:	LED_SET_LOW_BYTE  # led[7:0] <= 1
+  1:	0x01
+  2:	SLEEP_US          # settle
+  3:	0x05              # 5 us
+  4:	LED_LEFT_SHIFT    # rotate
+  5:	SLEEP_US
+  6:	0x05              # 5 us
+  7:	JUMP              # loop back to the shift
+  8:	0x04
+...

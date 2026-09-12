@@ -1,0 +1,30 @@
+---
+# SLEEP_S through the FSM. A real second at 100 MHz is 100M clocks, too slow to
+# simulate, so this runs the controller at 1 MHz where a second is 1M clocks.
+# Tests the same timerUnits path, just with less to count.
+# sara 9/8/26,
+module: ctrl_sleep_s
+clk_hz: 1000000
+inputs: |
+  // none
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = 0;
+rst: |
+  led <= 0;
+hex_prefix: 8
+commands:
+- name: LED_CLEAR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_FLOOD
+  databytes: 0
+  verilog: led <= 16'hffff;
+program: |
+  0:	LED_CLEAR
+  1:	SLEEP_S
+  2:	0x01        # one second
+  3:	LED_FLOOD
+  4:	NULL_CMD
+...

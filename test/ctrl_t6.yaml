@@ -1,0 +1,54 @@
+---
+# T6 fixture: the controller paths the earlier testbenches never reached.
+# Four routines in one ROM, entered by address.
+#   0   multi data byte command  (LED_TWO takes 2)
+#   6   SLEEP_MS through the FSM
+#   11  short routine, used as an interrupt target
+#   14  long sleep, meant to be cut short by intr
+module: ctrl_t6
+inputs: |
+  // no special inputs
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = 0;
+rst: |
+  led <= 0;
+hex_prefix: 8
+commands:
+- name: LED_CLEAR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_SET_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= data;
+- name: LED_SET_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= data;
+- name: LED_TWO
+  databytes: 2
+  verilog: led[7:0] <= data;
+- name: LED_FLOOD
+  databytes: 0
+  verilog: led <= 16'hffff;
+program: |
+  0:	LED_TWO            # routine A, consumes two data bytes
+  1:	0xAA               # first, command body never sees this one
+  2:	0xBB               # second, this is what lands in data
+  3:	LED_SET_HIGH_BYTE  # only runs if both bytes above were consumed
+  4:	0xCC
+  5:	NULL_CMD           # led should be CCBB
+  6:	LED_CLEAR          # routine B, SLEEP_MS through the FSM
+  7:	SLEEP_MS
+  8:	0x01               # 1 ms
+  9:	LED_FLOOD
+  10:	NULL_CMD
+  11:	LED_SET_LOW_BYTE   # routine C, the interrupt target
+  12:	0x77
+  13:	NULL_CMD
+  14:	LED_CLEAR          # routine D, long sleep to be interrupted
+  15:	SLEEP_MS
+  16:	0x64               # 100 ms
+  17:	LED_FLOOD          # must NOT run if the sleep is cut short
+  18:	NULL_CMD
+...
