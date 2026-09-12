@@ -1,0 +1,80 @@
+---
+# Seven segment display driver for the Basys3.
+#
+# The Basys3 has one four digit display with shared cathodes, so the digits have
+# to be multiplexed: light one, wait, light the next, repeat fast enough that
+# the eye sees all four. That refresh loop is usually a counter and a state
+# machine in Verilog. Here it is just the program below.
+#
+# Both seg and an are active low on this board.
+# seg bits are {g,f,e,d,c,b,a}, so 7'b1000000 is a zero.
+#
+# Written as a second worked example alongside controller_with_shift.yaml.
+# Uses symbolic labels, so no addresses to count by hand.
+#
+# sara (9/8/26)
+
+module: seven_segment
+inputs: |
+  // nothing to read, the display is write only
+outputs: |
+  output reg [6:0] seg,
+  output reg [3:0] an
+initial: |
+  seg = 7'b1111111;   // all segments off
+  an  = 4'b1111;      // all digits off
+rst: |
+  seg <= 7'b1111111;
+  an  <= 4'b1111;
+hex_prefix: 8
+commands:
+- name: SEG_DIGIT
+  databytes: 1
+  verilog: an <= ~(4'b0001 << data[1:0]);
+- name: SEG_PATTERN
+  databytes: 1
+  verilog: seg <= data[6:0];
+- name: SEG_OFF
+  databytes: 0
+  verilog: |
+    an  <= 4'b1111;
+        seg <= 7'b1111111;
+program: |
+  # show 1234, one digit at a time, 4 ms each.
+  # four digits at 4 ms is a 62 Hz refresh, above the flicker threshold.
+  #
+  # SEG_PATTERN comes BEFORE SEG_DIGIT on purpose. Each instruction costs a few
+  # clocks, so selecting the digit first would light it with the previous
+  # digit's pattern for about 50 ns. Invisible, but it is real ghosting and the
+  # fix is free: load the segments, then turn the digit on.
+  refresh: SEG_PATTERN
+           0x79           # 1
+           SEG_DIGIT
+           0x00           # rightmost digit
+           SLEEP_MS
+           0x04
+
+           SEG_PATTERN
+           0x24           # 2
+           SEG_DIGIT
+           0x01
+           SLEEP_MS
+           0x04
+
+           SEG_PATTERN
+           0x30           # 3
+           SEG_DIGIT
+           0x02
+           SLEEP_MS
+           0x04
+
+           SEG_PATTERN
+           0x19           # 4
+           SEG_DIGIT
+           0x03           # leftmost digit
+           SLEEP_MS
+           0x04
+
+           JUMP
+           refresh
+...

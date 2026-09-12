@@ -1,0 +1,66 @@
+# sara 9/10/26: runs the julia suite, then generates both examples and
+# simulates them, which otherwise only ever happens on my laptop.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  julia:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.12'
+
+      - name: install dependencies
+        run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
+
+      - name: unit tests
+        run: julia --project=. test/runtests.jl
+
+      - name: install icarus verilog
+        run: sudo apt-get update && sudo apt-get install -y iverilog
+
+      # the LED example: generate, then check the whole project elaborates
+      - name: generate and elaborate controller_with_shift
+        run: |
+          julia --project=. scripts/isabella.jl examples/controller_with_shift.yaml \
+                -o build/led -f -q
+          cd build/led
+          iverilog -g2012 -I. -o elab.vvp src/timer.sv src/led_controller_with_shift.sv
+          iverilog -g2012 -I. -o top.vvp top/led_controller_with_shift_top.sv \
+                   src/timer.sv src/led_controller_with_shift.sv
+
+      # the seven segment example: generate, elaborate, and actually run it
+      - name: generate and simulate seven_segment
+        run: |
+          julia --project=. scripts/isabella.jl examples/seven_segment.yaml \
+                -o build/seg -f -q
+          cd build/seg
+          iverilog -g2012 -I. -o tb.vvp sim/tb_seven_segment.sv \
+                   src/timer.sv src/seven_segment.sv
+          vvp tb.vvp
+
+      # the timer, at both clock rates, and the controller testbenches
+      - name: simulate the timer and the FSM
+        run: |
+          julia --project=. scripts/isabella.jl test/ctrl_test.yaml -o build/t -f -q
+          cd build/t
+          iverilog -g2012 -o timer.vvp ../../test/tb_timer.sv src/timer.sv
+          vvp timer.vvp
+          iverilog -g2012 -I. -o fsm.vvp ../../test/tb_controller.sv \
+                   src/timer.sv src/ctrl_test.sv
+          vvp fsm.vvp
+
+      - name: simulate the T6 edge cases
+        run: |
+          julia --project=. scripts/isabella.jl test/ctrl_t6.yaml -o build/t6 -f -q
+          cd build/t6
+          iverilog -g2012 -I. -o t6.vvp ../../test/tb_controller_t6.sv \
+                   src/timer.sv src/ctrl_t6.sv
+          vvp t6.vvp | tee out.txt
+          grep -q "ALL T6 CHECKS PASSED" out.txt
