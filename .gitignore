@@ -29,3 +29,9 @@ JuliaLocalPreferences.toml
 
 # sara 9/5/26: editor backups. two were committed upstream, removed here.
 *~
+
+# sara (9/13/26): pinned on purpose, the course wants one fixed environment
+!Manifest.toml
+
+# sara (9/18/26): where the CI steps and local runs generate into
+build/

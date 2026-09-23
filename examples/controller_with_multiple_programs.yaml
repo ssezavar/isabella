@@ -1,13 +1,13 @@
 ---
-module: led_controller_with_shift
+module: led_controller_with_multiple_programs
 inputs: |
-  // no special inputs for this controller
+  input [15:0] data_in,
 outputs: |
   output reg [15:0] led
 initial: |
-  led = 0;
+  led = data_in;
 rst: |
-  led <= 0;
+  led <= data_in;
 hex_prefix: 8
 commands:
 - name: LED_CLEAR
@@ -25,7 +25,7 @@ commands:
 - name: LED_OR_HIGH_BYTE
   databytes: 1
   verilog: led[15:8] <= led[15:8]|data;
-# 9/12/26 Sara: both of these AND, so NAND was the wrong name
+# Sara 9/22/26: same rename as in controller_with_shift, they AND
 #- name: LED_NAND_LOW_BYTE
 - name: LED_AND_LOW_BYTE
   databytes: 1
@@ -43,15 +43,32 @@ commands:
 - name: LED_LEFT_SHIFT
   databytes: 0
   verilog: led <= {led[14:0],led[15]};
+- name: LED_SET
+  databytes: 0
+  verilog: led <= data_in;
+- name: LED_NOT
+  databytes: 0
+  verilog: led <= ~led;
 program: |
+  # FIRST PROGRAM at iaddr 'd0
   0:	LED_SET_LOW_BYTE  # set 0-7
   1:	01		  # one light on
   2:	LED_SET_HIGH_BYTE # set 8-16
   3:	00		  # no lights on
   4:	LED_LEFT_SHIFT	  # rotate light
   5:	SLEEP_MS 	  # pause
-  # 6:	20     		  # 20ms          (sara 9/17: bare 20 is hex, that was 32ms)
+  # sara 9/22: bare digits are hex, 20 was 32 ms
+  #6:	20     		  # 20ms
   6:	'd20   		  # 20ms
   7: 	JUMP   		  # loop back
   8:	04      	  # to left shift cmd
+  # SECOND PROGRAM at iaddr 'd9
+  9:    LED_FLOOD         # all leds on
+  10:    NULL_CMD         # wait for next intr
+  # THIRD PROGRAM at iaddr 'd11   (sara 9/22, said 'd10)
+  11:    LED_SET          # set all leds to data_in
+  12:    NULL_CMD         # wait for next intr
+  # FOURTH PROGRAM at iaddr 'd13
+  13:    LED_NOT          # invert the leds
+  14:    NULL_CMD         # wait for next intr
 ...

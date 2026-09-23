@@ -1,0 +1,116 @@
+---
+# Fixture for the register commands. Six routines in one ROM, each entered
+# by the testbench with intr/iadr. The user commands expose _A and _B on
+# the LEDs, since nothing else in the controller does.
+#   arith    LOAD, ADD, SUB, SWAP, INCR, DECR, one after the other
+#   count    a JGZ loop that has to fall through when B reaches zero
+#   jz       JZ taken with B=0, then not taken with B=1
+#   jlz      JLZ taken with B='hFF, then not taken with B=1
+#   jgz      JGZ with B='hFF, not taken because B is compared signed
+#   show     LED_A and LED_B only, run after a reset to see them cleared
+# sara (9/21/26)
+module: ctrl_register
+inputs: |
+  // no special inputs
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = 0;
+rst: |
+  led <= 0;
+hex_prefix: 8
+commands:
+- name: LED_A
+  databytes: 0
+  verilog: led[7:0] <= _A;
+- name: LED_B
+  databytes: 0
+  verilog: led[15:8] <= _B;
+- name: LED_CLR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_BUMP
+  databytes: 0
+  verilog: led <= led + 1;
+- name: LED_SET
+  databytes: 1
+  verilog: led <= {8'h00, data};
+program: |
+  arith:    LOAD_A
+            'd5
+            LOAD_B
+            'd3
+            ADD_AB        # B = 8
+            LED_B
+            SUB_AB        # B = 5 - 8 = 'hFD
+            LED_B
+            SWAP_AB       # A = 'hFD, B = 5
+            LED_A
+            LED_B
+            INCR_B
+            DECR_B
+            DECR_B        # B = 4
+            LED_B
+            NULL_CMD
+  count:    LED_CLR
+            LOAD_B
+            'd3
+  body:     LED_BUMP
+            DECR_B
+            JGZ
+            body
+            LED_SET       # only reached if the last JGZ fell through
+            'hAA
+            NULL_CMD
+  jz:       LOAD_B
+            'd0
+            JZ
+            jz_taken
+            LED_SET
+            'hEE
+            NULL_CMD
+  jz_taken: LED_SET
+            'h11
+            LOAD_B
+            'd1
+            JZ
+            jz_wrong
+            LED_SET
+            'h22
+            NULL_CMD
+  jz_wrong: LED_SET
+            'hEE
+            NULL_CMD
+  jlz:      LOAD_B
+            'hFF
+            JLZ
+            jlz_taken
+            LED_SET
+            'hEE
+            NULL_CMD
+  jlz_taken: LED_SET
+            'h33
+            LOAD_B
+            'd1
+            JLZ
+            jlz_wrong
+            LED_SET
+            'h44
+            NULL_CMD
+  jlz_wrong: LED_SET
+            'hEE
+            NULL_CMD
+  jgz:      LOAD_B
+            'hFF
+            JGZ
+            jgz_wrong
+            LED_SET
+            'h55
+            NULL_CMD
+  jgz_wrong: LED_SET
+            'hEE
+            NULL_CMD
+  show:     LED_A
+            LED_B
+            NULL_CMD
+...

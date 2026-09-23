@@ -11,8 +11,11 @@ using Test
 function demo()
     cmds = [Dict("name"=>n,"databytes"=>b,"verilog"=>"") for (n,b) in [
         ("LED_CLEAR",0), ("LED_SET_LOW_BYTE",1), ("LED_SET_HIGH_BYTE",1),
-        ("LED_OR_LOW_BYTE",1), ("LED_OR_HIGH_BYTE",1), ("LED_NAND_LOW_BYTE",1),
-        ("LED_NAND_HIGH_BYTE",1), ("LED_FLOOD",0), ("LED_RIGHT_SHIFT",0),
+        # 9/12/26 Sara: renamed in the example, they AND
+        #("LED_OR_LOW_BYTE",1), ("LED_OR_HIGH_BYTE",1), ("LED_NAND_LOW_BYTE",1),
+        #("LED_NAND_HIGH_BYTE",1), ("LED_FLOOD",0), ("LED_RIGHT_SHIFT",0),
+        ("LED_OR_LOW_BYTE",1), ("LED_OR_HIGH_BYTE",1), ("LED_AND_LOW_BYTE",1),
+        ("LED_AND_HIGH_BYTE",1), ("LED_FLOOD",0), ("LED_RIGHT_SHIFT",0),
         ("LED_LEFT_SHIFT",0)]]
     # sara 9/5: the port fields, needed once the guard called the generator
     return Dict{String,Any}("module"=>"led_controller_with_shift",
@@ -105,7 +108,16 @@ end
         @test Isabella.parse_data_byte("0xFF")  == "FF"
 
         # bare digits still read as hex, but they warn now
-        @test (@test_logs (:warn,) Isabella.parse_data_byte("20")) == "20"
+        #@test (@test_logs (:warn,) Isabella.parse_data_byte("20")) == "20"
+        # Sara (9/17): hex is the default now, per Dr. Winstead. no warning,
+        # and verilog literals with or without the size
+        @test (@test_logs Isabella.parse_data_byte("20")) == "20"
+        @test Isabella.parse_data_byte("'h14")       == "14"
+        @test Isabella.parse_data_byte("'d20")       == "14"
+        @test Isabella.parse_data_byte("'b10100")    == "14"
+        @test Isabella.parse_data_byte("8'b00010100") == "14"
+        @test_throws ErrorException Isabella.parse_data_byte("'d256")
+        @test Isabella.parse_data_byte("16'h14")     === nothing
 
         # junk in the program is an error instead of a corrupt ROM
         @test_throws ErrorException assemble("  0:\tNOT_A_COMMAND\n")
@@ -135,7 +147,9 @@ end
         d["program"] = "  0:\tLED_CLEAR\n"
         out = Isabella.generate_controller_project(d)
         @test any(f -> f["filename"] == "src/timer.sv", out)
-        @test length(out) == 10   # sara 9/10: was 8, before top/ and sim/
+        #@test length(out) == 10   # sara 9/10: was 8, before top/ and sim/
+        #@test length(out) == 11   # sara 9/14, the listing file
+        @test length(out) == 13   # 9/20 sara, his two register command files
 
         # H8, the clock has to reach the timer from the yaml
         ctrl = filter(f -> f["filename"] == "src/led_controller_with_shift.sv", out)[1]
@@ -243,6 +257,133 @@ done:\tLED_LEFT_SHIFT
         @test_throws ErrorException assemble(long)
         ok = join(["  $(i):\tLED_CLEAR" for i in 0:254], "\n")
         @test length(assemble(ok)) == 256
+    end
+    # Sara 9/13/26: byte for byte against the saved baseline
+    @testset "golden output" begin
+        gold(f) = read(joinpath(@__DIR__,"golden",f), String)
+        prog = replace(gold("led_controller_with_shift_program.asm"),
+                       "\r\n" => "\n")
+        want = replace(gold("led_controller_with_shift_program.mem"),
+                       "\r\n" => "\n")
+        got  = join(assemble(prog), "\n")
+        @test got == want
+        @test length(split(got,"\n")) == 256
+    end
+
+    # sara 9/14/26: the listing has to agree with the .mem, byte for byte
+    @testset "listing file" begin
+        d = demo()
+        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        Isabella.generate_command_codes!(d)
+        cc  = Isabella.command_code_dict(d)
+        lst = Isabella.program_listing(d,cc)
+        mem = split(Isabella.translate_program(d,cc), "\n")
+
+        rows = [l for l in split(lst,"\n") if startswith(l,"  ")]
+        @test length(rows) == 2
+        for (k,r) in enumerate(rows)
+            @test split(r)[2] == mem[k]
+        end
+
+        out = Isabella.generate_controller_project(d)
+        @test any(f -> endswith(f["filename"],"_program.lst"), out)
+
+        # a named target gets its own section
+        d2 = demo()
+        d2["program"] = "  top:\tLED_CLEAR\n  JUMP\n  top\n"
+        Isabella.generate_command_codes!(d2)
+        l2 = Isabella.program_listing(d2,Isabella.command_code_dict(d2))
+        @test occursin("# labels", l2)
+        @test occursin("top", l2)
+    end
+
+    # sara 09/15: ++ is SystemVerilog. it crept in from three generators,
+    # so the guard is on the output, not on any one of them.
+    @testset "generated source is verilog 2001" begin
+        d = demo()
+        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        for f in Isabella.generate_controller_project(d)
+            endswith(f["filename"], ".md") && continue
+            #live = [l for l in split(f["contents"], "\n") if !startswith(strip(l), "//")]
+            # sara (9/20): his localparam table says "// B++" at the end of a line
+            live = [replace(l, r"//.*$" => "") for l in split(f["contents"], "\n")]
+            @test !any(l -> occursin("++", l), live)
+        end
+    end
+
+    # Sara 9/21/26: his register commands from 83b8440, merged with fixes.
+    # the fsm side is test/tb_register.sv, this is the assembler side.
+    @testset "register commands" begin
+        # the ten names assemble to his codes
+        out = assemble("""
+\tLOAD_A
+\t'd5
+\tLOAD_B
+\t'd3
+\tINCR_B
+\tDECR_B
+\tADD_AB
+\tSUB_AB
+\tSWAP_AB
+\tJZ
+\t'd0
+\tJLZ
+\t'd0
+\tJGZ
+\t'd0
+""")
+        @test out[1:15] == ["11","05","12","03","13","14","15","16","17",
+                            "18","00","19","00","1A","00"]
+
+        # a conditional jump takes a label, like JUMP does
+        loop = assemble("""
+\tLOAD_B
+\t'd3
+body:\tLED_LEFT_SHIFT
+\tDECR_B
+\tJGZ
+\tbody
+\tNULL_CMD
+""")
+        @test loop[1:7] == ["12","03","89","14","1A","02","00"]
+
+        # and gets the same off the end warning, naming itself
+        @test_logs (:warn, r"^JZ at address") assemble("\tJZ\n\t0x40\n")
+
+        # LOAD_A owes a byte, INCR_B does not
+        @test_throws ErrorException assemble("\tLOAD_A\n\tLED_CLEAR\n")
+        @test assemble("\tINCR_B\n\tLED_CLEAR\n")[1:2] == ["13","80"]
+
+        # the names are reserved now
+        res = demo()
+        push!(res["commands"], Dict("name"=>"LOAD_A","databytes"=>1,"verilog"=>""))
+        @test_throws ErrorException Isabella.generate_command_codes!(res)
+
+        # and so are the prefixes they live under
+        for p in (0, 1, 16, "0", "1", "10")
+            bad = demo(); bad["hex_prefix"] = p
+            @test_throws ErrorException Isabella.generate_command_codes!(bad)
+        end
+        ok = demo(); ok["hex_prefix"] = "f"
+        Isabella.generate_command_codes!(ok)
+        @test ok["commands"][1]["hex"] == "F0"
+
+        # what lands in the generated project
+        d = demo(); d["program"] = "\tLED_CLEAR\n"
+        prj  = Isabella.generate_controller_project(d)
+        byname(n) = filter(f -> f["filename"] == n, prj)[1]["contents"]
+        regs  = byname("inc/register_commands.sv")
+        codes = byname("inc/register_command_codes.sv")
+        ctrl  = byname("src/led_controller_with_shift.sv")
+        @test occursin("localparam JGZ     = 8'h1A;", codes)
+        @test occursin("\$signed(_B) < 0", regs)
+        @test occursin("\$signed(_B) > 0", regs)
+        # the not taken branch has its own arm now
+        @test count("else if (data_bytes == 1) begin", regs) == 3
+        @test occursin("reg [7:0]         _A, _B;", ctrl)
+        @test occursin("`include \"inc/register_commands.sv\"", ctrl)
+        @test occursin("`include \"inc/register_command_codes.sv\"", ctrl)
+        @test occursin("_A <= 0;", ctrl)   # on rst
     end
 
 end

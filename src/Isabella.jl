@@ -26,18 +26,22 @@ function flow_command_source()
 end 
 SLEEP_US: begin
    timerUnits <= 0;
-   padr++;
+   // 9/15/26 sara: ++ is SystemVerilog, and blocking. this is neither.
+   //padr++;
+   padr <= padr + 1;
    
    state <= DATA_BYTE;
 end
 SLEEP_MS: begin
    timerUnits <= 1;
-   padr++;
+   //padr++;
+   padr <= padr + 1;
    state <= DATA_BYTE;
 end
 SLEEP_S: begin
    timerUnits <= 2;
-   padr++;
+   //padr++;
+   padr <= padr + 1;
    state <= DATA_BYTE;
 end 
 JUMP: begin
@@ -48,10 +52,152 @@ JUMP: begin
       data_bytes <= 0;
    end
    else begin
-      padr <= padr + 1;      
+      padr <= padr + 1;
       state <= DATA_BYTE;
    end
-   
+
+end
+""")
+end
+
+
+# Sara, 9/18: from Dr. W's commit 83b8440, the A/B register commands.
+# codes as he chose them. hex_prefix 1 is refused now because of these.
+function register_command_codes()
+    s=string("""
+localparam LOAD_A  = 8'h11;
+localparam LOAD_B  = 8'h12;
+localparam INCR_B  = 8'h13;  // B++
+localparam DECR_B  = 8'h14;  // B--
+localparam ADD_AB  = 8'h15;  // B <= A+B
+localparam SUB_AB  = 8'h16;  // B <= A-B
+localparam SWAP_AB = 8'h17;  // B <= A; A <= B;
+localparam JZ      = 8'h18;  // Jump if B==0
+localparam JLZ     = 8'h19;  // Jump if B<0
+localparam JGZ     = 8'h1A;  // Jump if B>0
+""")
+    return s
+end
+
+
+# sara 09/19, his 83b8440 body with four things changed, each marked.
+#   ++ and -- are gone (H2), commands fetch the next one themselves instead
+#   of going through CMD_DONE (H10), a conditional jump that is not taken
+#   now steps over its target byte, and B is compared as a signed value.
+function register_command_source()
+    # what CMD_DONE used to do, one clock earlier
+    nxt = """
+      padr       <= padr + 1;
+      cmd        <= pmem[padr + 1];
+      data_bytes <= 0;
+      state      <= CMD_START;"""
+
+    return string("""
+LOAD_A: begin
+   if (data_bytes == 1) begin
+      _A    <= data;
+      //state <= CMD_DONE;
+$nxt
+   end else begin
+      //padr++;
+      padr  <= padr + 1;
+      state <= DATA_BYTE;
+   end
+end
+LOAD_B: begin
+   if (data_bytes == 1) begin
+      _B    <= data;
+      //state <= CMD_DONE;
+$nxt
+   end else begin
+      //padr++;
+      padr  <= padr + 1;
+      state <= DATA_BYTE;
+   end
+end
+INCR_B: begin
+   // 9/19 sara: ++ is blocking, and the register is written with <= elsewhere
+   //_B++;
+   _B <= _B + 1;
+   //state <= CMD_DONE;
+$nxt
+end
+DECR_B: begin
+   //_B--;
+   _B <= _B - 1;
+   //state <= CMD_DONE;
+$nxt
+end
+ADD_AB: begin
+   _B <= _A + _B;
+   //state <= CMD_DONE;
+$nxt
+end
+SUB_AB: begin
+   _B <= _A - _B;
+   //state <= CMD_DONE;
+$nxt
+end
+SWAP_AB: begin
+   _B <= _A;
+   _A <= _B;
+   //state <= CMD_DONE;
+$nxt
+end
+JZ: begin
+   if ((data_bytes == 1) && (_B==0)) begin
+      state <= CMD_START;
+      padr  <= data;
+      cmd   <= pmem[data];
+      data_bytes <= 0;
+   end
+   // Sara (9/19/26): not taken used to land in the else below and fetch
+   // one more byte. data_bytes was 2 from then on, the test above never
+   // held again and padr walked the whole rom. see test/tb_register.sv
+   //else begin
+   else if (data_bytes == 1) begin
+$nxt
+   end
+   else begin
+      padr <= padr + 1;
+      state <= DATA_BYTE;
+   end
+end
+JLZ: begin
+   // sara 9/19: _B is a reg [7:0], so _B<0 was never true and JLZ never jumped
+   //if ((data_bytes == 1) && (_B<0)) begin
+   if ((data_bytes == 1) && (\$signed(_B) < 0)) begin
+      state <= CMD_START;
+      padr  <= data;
+      cmd   <= pmem[data];
+      data_bytes <= 0;
+   end
+   //else begin
+   else if (data_bytes == 1) begin
+$nxt
+   end
+   else begin
+      padr <= padr + 1;
+      state <= DATA_BYTE;
+   end
+end
+JGZ: begin
+   // signed to match JLZ, so 'h80 and up count as negative here too
+   //if ((data_bytes == 1) && (_B>0)) begin
+   if ((data_bytes == 1) && (\$signed(_B) > 0)) begin
+      state <= CMD_START;
+      padr  <= data;
+      cmd   <= pmem[data];
+      data_bytes <= 0;
+   end
+   //else begin
+   else if (data_bytes == 1) begin
+$nxt
+   end
+   else begin
+      padr <= padr + 1;
+      state <= DATA_BYTE;
+   end
 end
 """)
 end
@@ -64,6 +210,11 @@ function generate_command_codes!(data)
 
     # 9/4/26 sara: cmd 10 came out as "810", not a legal 8'h literal
     pfxn = isa(pfx,Integer) ? pfx : parse(Int,string(pfx),base=16)
+    # 9/20/26 sara: 0 is the flow commands, 1 is the register commands now,
+    # and anything past f does not fit in a byte
+    if (pfxn < 2 || pfxn > 15)
+        error("hex_prefix ",pfx," is not usable. 0 and 1 belong to the built-in commands, and it must fit one hex digit, so 2 to f")
+    end
     if (length(data["commands"]) > 16)
         error("too many commands (",length(data["commands"]),"). only 16 fit under hex_prefix ",pfx)
     end
@@ -104,13 +255,25 @@ end
 
 
 # sara, 09/06: names nobody may reuse
-const RESERVED_NAMES = Set(["NULL_CMD","SLEEP_US","SLEEP_MS","SLEEP_S","JUMP"])
+#const RESERVED_NAMES = Set(["NULL_CMD","SLEEP_US","SLEEP_MS","SLEEP_S","JUMP"])
+# Sara, 09/20: plus the ten register commands
+const RESERVED_NAMES = Set(["NULL_CMD","SLEEP_US","SLEEP_MS","SLEEP_S","JUMP",
+                            "LOAD_A","LOAD_B","INCR_B","DECR_B","ADD_AB",
+                            "SUB_AB","SWAP_AB","JZ","JLZ","JGZ"])
+
+# the commands whose data byte is an address
+const JUMP_CMDS = Set(["JUMP","JZ","JLZ","JGZ"])
 
 
 # how many data bytes each command expects, built-ins plus the user's
 function command_databytes(data)
+    #n = Dict{String,Int}("NULL_CMD"=>0,"SLEEP_US"=>1,"SLEEP_MS"=>1,
+    #                     "SLEEP_S"=>1,"JUMP"=>1)
     n = Dict{String,Int}("NULL_CMD"=>0,"SLEEP_US"=>1,"SLEEP_MS"=>1,
-                         "SLEEP_S"=>1,"JUMP"=>1)
+                         "SLEEP_S"=>1,"JUMP"=>1,
+                         "LOAD_A"=>1,"LOAD_B"=>1,"INCR_B"=>0,"DECR_B"=>0,
+                         "ADD_AB"=>0,"SUB_AB"=>0,"SWAP_AB"=>0,
+                         "JZ"=>1,"JLZ"=>1,"JGZ"=>1)
     for x in data["commands"]
         n[string(x["name"])] = x["databytes"]
     end
@@ -126,7 +289,19 @@ function command_code_dict(data)
     d["SLEEP_US"]="01"
     d["SLEEP_MS"]="02"
     d["SLEEP_S"]="03"
-    
+
+    # from his 83b8440
+    d["LOAD_A"]="11"
+    d["LOAD_B"]="12"
+    d["INCR_B"]="13"
+    d["DECR_B"]="14"
+    d["ADD_AB"]="15"
+    d["SUB_AB"]="16"
+    d["SWAP_AB"]="17"
+    d["JZ"]="18"
+    d["JLZ"]="19"
+    d["JGZ"]="1A"
+
     for x in data["commands"]
         d[x["name"]]=x["hex"]
     end
@@ -136,21 +311,30 @@ end
 
 # Sara, 09/04/26: .mem is hex, so a bare "20" meant 32. explicit radix now.
 #   0x14 / 8'h14 hex,  8'd20 / #20 decimal,  bare digits still hex but warn
+# sara 9/17/26: Dr. Winstead's call, verilog literals with hex as the default.
+#   'h14 / 'd20 / 'b10100, the 8 in front is optional, bare digits are hex
+#   and no longer warn. 0x14 and #20 kept since the docs and tests use them.
 function parse_data_byte(tok)
     t = strip(tok)
     v = nothing
 
     if occursin(r"^0[xX][0-9a-fA-F]{1,2}$", t)
         v = parse(Int,t[3:end],base=16)
-    elseif occursin(r"^8'[hH][0-9a-fA-F]{1,2}$", t)
-        v = parse(Int,t[4:end],base=16)
-    elseif occursin(r"^8'[dD][0-9]{1,3}$", t)
-        v = parse(Int,t[4:end],base=10)
+#   elseif occursin(r"^8'[hH][0-9a-fA-F]{1,2}$", t)
+#       v = parse(Int,t[4:end],base=16)
+#   elseif occursin(r"^8'[dD][0-9]{1,3}$", t)
+#       v = parse(Int,t[4:end],base=10)
+    elseif (m = match(r"^8?'[hH]([0-9a-fA-F]{1,2})$", t)) !== nothing
+        v = parse(Int,m.captures[1],base=16)
+    elseif (m = match(r"^8?'[dD]([0-9]{1,3})$", t)) !== nothing
+        v = parse(Int,m.captures[1],base=10)
+    elseif (m = match(r"^8?'[bB]([01]{1,8})$", t)) !== nothing
+        v = parse(Int,m.captures[1],base=2)
     elseif occursin(r"^#[0-9]{1,3}$", t)
         v = parse(Int,t[2:end],base=10)
     elseif occursin(r"^[0-9a-fA-F]{1,2}$", t)
         v = parse(Int,t,base=16)
-        @warn "byte \"$t\" has no radix, reading it as hex ($v decimal). write 0x$t or #$v"
+#       @warn "byte \"$t\" has no radix, reading it as hex ($v decimal). write 0x$t or #$v"
     else
         return nothing
     end
@@ -188,7 +372,9 @@ function scan_labels(data)
 end
 
 
-function translate_program(data,d)
+# 9/14/26 sara: optional collector, so the listing walks the program once
+#function translate_program(data,d)
+function translate_program(data,d,listing=nothing)
     s=String("")
     a=data["program"]
     p=split(a,"\n")
@@ -199,7 +385,8 @@ function translate_program(data,d)
     pending = 0
     owed_by = ""
     lastcmd = ""
-    jumps   = Vector{Tuple{Int,Int}}()
+    #jumps   = Vector{Tuple{Int,Int}}()
+    jumps   = Vector{Tuple{Int,Int,String}}()   # sara 9/21, which jump it was
     labels  = scan_labels(data)   # sara 9/7
 
     for x in p
@@ -230,6 +417,7 @@ function translate_program(data,d)
                           pending," more data byte(s), found command ",c[2])
                 end
                 s=string(s,d[c[2]],"\n")
+                listing === nothing || push!(listing,(nbytes,d[c[2]],strip(x)))
                 lastcmd = string(c[2])
                 pending = get(nb,lastcmd,0)
                 owed_by = lastcmd
@@ -238,11 +426,15 @@ function translate_program(data,d)
                 # sara, 9/7: a bare name is a jump target
                 if (haskey(labels,string(c[2])))
                     tgt = labels[string(c[2])]
-                    if (pending > 0 && lastcmd == "JUMP")
-                        push!(jumps,(nbytes,tgt))
+                    # sara, 9/21: JZ, JLZ and JGZ take a target too
+                    #if (pending > 0 && lastcmd == "JUMP")
+                    if (pending > 0 && lastcmd in JUMP_CMDS)
+                        push!(jumps,(nbytes,tgt,lastcmd))
                         pending = pending - 1
                     end
-                    s=string(s,uppercase(string(tgt,base=16,pad=2)),"\n")
+                    tb=uppercase(string(tgt,base=16,pad=2))
+                    s=string(s,tb,"\n")
+                    listing === nothing || push!(listing,(nbytes,tb,strip(x)))
                     nbytes=nbytes+1
                     continue
                 end
@@ -251,12 +443,14 @@ function translate_program(data,d)
                     error("program line \"",strip(x),"\": \"",c[2],"\" is not a known command or a valid byte")
                 end
                 if (pending > 0)
-                    if (lastcmd == "JUMP")
-                        push!(jumps,(nbytes,parse(Int,b,base=16)))
+                    #if (lastcmd == "JUMP")
+                    if (lastcmd in JUMP_CMDS)
+                        push!(jumps,(nbytes,parse(Int,b,base=16),lastcmd))
                     end
                     pending = pending - 1
                 end
                 s=string(s,b,"\n")
+                listing === nothing || push!(listing,(nbytes,b,strip(x)))
             end
             nbytes=nbytes+1
         end
@@ -270,9 +464,11 @@ function translate_program(data,d)
 
     # a jump past the end lands in padding and stops. legal, almost certainly a
     # typo, so warn rather than refuse.
-    for (at,target) in jumps
+    #for (at,target) in jumps
+    for (at,target,which) in jumps
         if (target >= nbytes)
-            @warn "JUMP at address $(at-1) targets $target, past the end of this $(nbytes) byte program. it lands in padding and stops."
+            #@warn "JUMP at address $(at-1) targets $target, past the end of this $(nbytes) byte program. it lands in padding and stops."
+            @warn "$which at address $(at-1) targets $target, past the end of this $(nbytes) byte program. it lands in padding and stops."
         end
     end
 
@@ -366,11 +562,15 @@ module timer #(parameter CLK_HZ = 100000000) (
 		 mscount <= mscount + 1;
 	    end	    	      
 	    else begin
-	       uscount++;	       
+	       // Sara (9/15): mixed with <= on the same reg, which is asking
+	       // for trouble. all nonblocking now.
+	       //uscount++;
+	       uscount <= uscount + 1;
 	    end
 	 end
 	 else begin
-	    clkcount++;	    
+	    //clkcount++;
+	    clkcount <= clkcount + 1;
 	 end
       end
    end
@@ -398,7 +598,9 @@ module """,data["module"],"""
    // program memory
    reg [7:0] 	     pmem[255:0];
 
-   
+   // program registers
+   reg [7:0]         _A, _B;
+
    reg [2:0] 	     state;
    reg [7:0] 	     padr;  // program memory address pointer
    reg [7:0] 	     cmd;   // command code register
@@ -420,12 +622,16 @@ module """,data["module"],"""
 
    // import list of command codes and aliases:
    `include "inc/flow_command_codes.sv"
+   `include "inc/register_command_codes.sv"
    `include "inc/""",data["module"],"""_command_codes.sv"
 
    initial begin
       state = WAIT;
       ready = 0;
       timerUnits = 0; // default micro-seconds
+      // sara, 09/19: ADD_AB before any LOAD read x otherwise
+      _A = 0;
+      _B = 0;
       \$readmemh("programs/""",data["module"],"""_program.mem",pmem,0,255);
       """,data["initial"],"""
    end   
@@ -448,6 +654,13 @@ module """,data["module"],"""
 	 state <= WAIT;
 	 tclr <= 1;
 	 padr <= 0;
+	 // Sara 9/12: these read as x until WAIT sets them
+	 cmd  <= 0;
+	 data <= 0;
+	 data_bytes <= 0;
+	 // Sara 9/19/26, and the register commands never cleared theirs
+	 _A <= 0;
+	 _B <= 0;
          """,data["rst"],"""
       end
       else begin
@@ -473,6 +686,7 @@ module """,data["module"],"""
 	   case (cmd)
 	     // import program control commands
              `include "inc/flow_commands.sv"
+             `include "inc/register_commands.sv"
              `include "inc/""",data["module"],"""_commands.sv"
 	   endcase
 	end
@@ -512,7 +726,8 @@ module """,data["module"],"""
 	   else if (t) begin
 	      tclr <= 1;
 	      cmd <= pmem[padr+1];
-              padr++;
+              //padr++;
+              padr <= padr + 1;
 	      data_bytes <= 0;
 	      ready <= 0;	      
 	      state <= CMD_START;
@@ -542,10 +757,17 @@ function generate_command_source(data)
        //padr++;
        if (data_bytes==""",x["databytes"],""") begin
 """,x["verilog"],"""
-      state <= CMD_DONE;
+      // Sara, 9/15/26: CMD_DONE did the fetch one clock later and did
+      // nothing else, so it is done here instead. One clock per command.
+      //state <= CMD_DONE;
+      padr       <= padr + 1;
+      cmd        <= pmem[padr + 1];
+      data_bytes <= 0;
+      state      <= CMD_START;
    end
    else begin
-      padr++;
+      //padr++;
+      padr <= padr + 1;
       state<=DATA_BYTE;
    end
 end
@@ -747,6 +969,26 @@ endmodule
 end
 
 
+
+# sara (9/14): address, byte, source. labels hide the addresses now.
+function program_listing(data,d)
+    rows = Vector{Tuple{Int,String,String}}()
+    translate_program(data,d,rows)
+    s = string("# listing for ",data["module"],", ",length(rows)," bytes","\n",
+               "# addr  byte  source","\n")
+    for (a,b,src) in rows
+        s = string(s,"  ",uppercase(string(a,base=16,pad=2)),"    ",b,"  ",src,"\n")
+    end
+    labels = scan_labels(data)
+    if (!isempty(labels))
+        s = string(s,"\n","# labels","\n")
+        for k in sort(collect(keys(labels)))
+            s = string(s,"  ",uppercase(string(labels[k],base=16,pad=2)),"    ",k,"\n")
+        end
+    end
+    return s
+end
+
 function generate_controller_project(data)
 #    outfile=Vector{Dict{String}{String}}()
     
@@ -760,6 +1002,10 @@ function generate_controller_project(data)
     # Generate program ROM
     program_rom = Dict{String}{String}("filename"=>string("programs/",data["module"],"_program.mem"),
                                        "contents"=>translate_program(data,command_code_dict(data)))
+
+    # 9/14/26 Sara: same walk as the .mem, so the two cannot disagree
+    program_listing_file = Dict{String}{String}("filename"=>string("programs/",data["module"],"_program.lst"),
+                                               "contents"=>program_listing(data,command_code_dict(data)))
     
 
         
@@ -767,8 +1013,11 @@ function generate_controller_project(data)
     # sara, 9/4/26: a local of the same name shadowed the function it calls
     #timer_source = Dict{String}{String}("filename"=>"src/timer.sv",
     #                                    "contents"=>timer_source())
-    timer_src = Dict{String}{String}("filename"=>"src/timer.sv",
-                                     "contents"=>timer_source())
+    # Sara 09/18/26: he fixed it the same way in c57b7f5, taking his name
+    #timer_src = Dict{String}{String}("filename"=>"src/timer.sv",
+    #                                 "contents"=>timer_source())
+    timer_module_source = Dict{String}{String}("filename"=>"src/timer.sv",
+                                               "contents"=>timer_source())
 
     # Generate controller source
     controller_source = Dict{String}{String}("filename"=>string("src/",data["module"],".sv"),
@@ -804,27 +1053,43 @@ function generate_controller_project(data)
     control_flow_param_table = Dict{String}{String}("filename"=>string("inc/flow_command_codes.sv"),
                                                     "contents"=>flow_command_codes() )
 
+    # Generate source for register commands
+    reg_command_source = Dict{String}{String}("filename"=>string("inc/register_commands.sv"),
+                                               "contents"=>register_command_source() )
 
-    return [codetable,    
+
+    # Generate localparam definitions for register commands
+    reg_param_table = Dict{String}{String}("filename"=>string("inc/register_command_codes.sv"),
+                                                    "contents"=>register_command_codes() )
+
+
+    return [codetable,
             program_rom,
-            timer_src,
+            program_listing_file,
+            #timer_src,
+            timer_module_source,
             controller_source,
             command_param_table,
             command_implementation,
             control_flow_source,
             control_flow_param_table,
+            reg_command_source,
+            reg_param_table,
             top_module,
             testbench
-            ]    
+            ]
 end
 
 
-export flow_command_codes 
+export flow_command_codes
 export flow_command_source
+export register_command_codes
+export register_command_source
 export generate_command_codes!
 export print_command_code_table
 export command_code_dict
 export translate_program
+export program_listing
 export generate_verilog
 export timer_source
 export generate_command_source

@@ -56,8 +56,9 @@ the blocking / non-blocking convention of the surrounding code.
 The high nibble of your command codes, as a number. With `hex_prefix: 8` your
 commands are numbered `0x80`, `0x81`, `0x82` and so on.
 
-Pick something at or above 1. Codes `0x00` to `0x04` are reserved for the
-built-in flow control commands.
+Pick something from `2` to `f`. Prefix `0` holds the built-in flow commands
+(`0x00` to `0x04`) and prefix `1` the register commands (`0x11` to `0x1A`), so
+both are refused. Anything above `f` does not fit in a byte.
 
 **You get 16 commands per prefix.** The 17th is an error, because there is no
 room left in the nibble.
@@ -89,7 +90,11 @@ A list. Each entry has three fields.
 | `verilog` | the body, pasted into a `case` arm and run when the command executes. |
 
 Inside `verilog` you can use anything declared in `outputs`, plus `data`, which
-holds the last data byte read.
+holds the last data byte read, and the two program registers `_A` and `_B`.
+
+The built-in names are taken: `NULL_CMD`, `SLEEP_US`, `SLEEP_MS`, `SLEEP_S`,
+`JUMP`, and the register commands `LOAD_A`, `LOAD_B`, `INCR_B`, `DECR_B`,
+`ADD_AB`, `SUB_AB`, `SWAP_AB`, `JZ`, `JLZ`, `JGZ`. Reusing one is an error.
 
 ```yaml
 - name: LED_SET_LOW_BYTE
@@ -158,19 +163,21 @@ cleanly.
 
 ### Data byte radix
 
-**The `.mem` file is hexadecimal, so a bare number is read as hex.** `20` means
-32 decimal, not 20. Write the radix and avoid the whole question:
+Data bytes are written like Verilog literals, and **hex is the default**: a
+bare `20` means 0x20, which is 32 decimal. Put a radix in front when you mean
+something else.
 
 | you write | value |
 |---|---|
+| `14` | 20 (hex is the default) |
+| `'h14` or `8'h14` | 20 |
+| `'d20` or `8'd20` | 20 |
+| `'b10100` or `8'b00010100` | 20 |
 | `0x14` | 20 |
-| `8'h14` | 20 |
-| `8'd20` | 20 |
 | `#20` | 20 |
-| `14` | 20, and prints a warning |
 
-Bare digits still work so existing programs keep running, but they warn every
-time, naming both readings.
+The size prefix is optional and only `8` is accepted. Anything over 255 is an
+error, and anything that matches none of these rows is rejected as a bad token.
 
 ## See also
 

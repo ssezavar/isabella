@@ -19,8 +19,52 @@ Unused program memory is `0x00`, so a routine that simply runs to the end of
 what you wrote stops on its own. Ending a routine with an explicit `NULL_CMD`
 is clearer.
 
+## Register commands
+
+Two 8-bit registers, `A` and `B`, live inside every controller, and ten
+commands work on them. Codes `0x11` through `0x1A`, again built in and not
+declared. (Added upstream in September 2026.)
+
+| code | name | data bytes | what it does |
+|---|---|---|---|
+| `0x11` | `LOAD_A` | 1 | `A = byte` |
+| `0x12` | `LOAD_B` | 1 | `B = byte` |
+| `0x13` | `INCR_B` | 0 | `B = B + 1` |
+| `0x14` | `DECR_B` | 0 | `B = B - 1` |
+| `0x15` | `ADD_AB` | 0 | `B = A + B` |
+| `0x16` | `SUB_AB` | 0 | `B = A - B` |
+| `0x17` | `SWAP_AB` | 0 | exchange A and B |
+| `0x18` | `JZ` | 1 | continue at the address if `B == 0` |
+| `0x19` | `JLZ` | 1 | continue at the address if `B < 0` |
+| `0x1A` | `JGZ` | 1 | continue at the address if `B > 0` |
+
+Arithmetic wraps at 8 bits. **The three jumps read `B` as a signed value**, so
+`0x80` through `0xFF` are negative: `JLZ` takes them and `JGZ` does not. That
+is the only reading under which `JLZ` can ever fire, since an unsigned byte is
+never below zero. `JZ` does not care either way.
+
+A conditional jump that is not taken continues with the next instruction, the
+same as any other command. Its target may be a label, exactly as with `JUMP`.
+
+Both registers are zero after reset. Your own command bodies may read or
+write them as `_A` and `_B`; that is how `test/ctrl_register.yaml` shows their
+values on the LEDs.
+
+A counted loop, three times round:
+
+```
+          LOAD_B
+          'd3
+body:     LED_LEFT_SHIFT
+          DECR_B
+          JGZ
+          body
+          NULL_CMD
+```
+
 Your own commands start at `hex_prefix << 4`. With `hex_prefix: 8` they are
-`0x80` upward, up to 16 of them.
+`0x80` upward, up to 16 of them. Prefixes `0` and `1` are taken by the two
+tables above.
 
 ## Driving the controller
 
@@ -72,9 +116,26 @@ Routines are re-entrant. Firing the same address twice runs it twice.
 **Sleeps are a floor, not an exact figure.** Every instruction costs a few
 clocks to fetch and decode on top of any sleep it contains.
 
-Measured at 100 MHz: a loop of `LED_LEFT_SHIFT`, `SLEEP_US 5`, `JUMP` repeats
-every **5.09 µs**, not 5.00. That is about 90 ns of overhead per iteration,
-spread across the instructions in the loop.
+Measured at 100 MHz, by `test/tb_overhead.sv`:
+
+| instruction | clocks | at 100 MHz |
+|---|---|---|
+| a command taking no data byte | 1 | 10 ns |
+| a command taking one data byte | 3 | 30 ns |
+| `SLEEP_US 5` in a loop with two other instructions | 508 | 5.08 µs |
+| `JZ` / `JLZ` / `JGZ`, taken or not (`test/tb_register.sv`) | 3 | 30 ns |
+
+The register commands follow the same two rows: `INCR_B` and friends cost one
+clock, `LOAD_A` and `LOAD_B` three. A counted loop of one command, `DECR_B`
+and `JGZ` therefore goes round every 5 clocks.
+
+So a loop of `LED_LEFT_SHIFT`, `SLEEP_US 5`, `JUMP` repeats every **5.08 µs**,
+not 5.00. Each data byte a command takes adds two clocks, not one: one to
+fetch it and one to come back.
+
+These numbers are one clock per command better than they were. The FSM used to
+spend a whole state, `CMD_DONE`, doing nothing but advancing the program
+counter, which it now does in the same clock as the command itself.
 
 For blinking lights this does not matter. For a peripheral with tight
 inter-command timing, an OLED init sequence for instance, budget for it, or

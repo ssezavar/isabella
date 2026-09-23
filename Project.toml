@@ -1,6 +1,7 @@
 name = "Isabella"
 uuid = "7581a2d9-7336-43fd-a366-50070be993c4"
-version = "0.1.0"
+#version = "0.1.0"
+version = "0.1.1"   # 9/18/26 sara, matches his c57b7f5
 authors = ["Chris Winstead <chris.winstead@usu.edu>"]
 
 [deps]

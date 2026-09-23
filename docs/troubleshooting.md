@@ -15,9 +15,18 @@ Either a mnemonic that is not in your `commands:` list, usually a typo or a case
 difference, or a data byte in a form the assembler does not accept. See the
 radix table in [yaml_schema.md](yaml_schema.md).
 
-**`Warning: byte "20" has no radix, reading it as hex (32 decimal)`**
-Not fatal, but it is telling you something real. A bare `20` in the program is
-hex, so it means 32. Write `0x20` if you meant 32, or `#20` if you meant 20.
+**A sleep or a data byte is bigger than you wrote.**
+Bare digits are hex. `20` in the program means 0x20, which is 32. Write `'d20`
+if you meant 20 decimal. The full radix table is in
+[yaml_schema.md](yaml_schema.md).
+
+**`error: hex_prefix 1 is not usable. 0 and 1 belong to the built-in commands, and it must fit one hex digit, so 2 to f`**
+The flow commands live under `0` and the register commands under `1`. Pick
+anything from `2` to `f`.
+
+**`error: command name "LOAD_A" is reserved for a built-in command`**
+The fifteen built-in names are listed in [yaml_schema.md](yaml_schema.md).
+Rename yours.
 
 **`error: too many commands (17). only 16 fit under hex_prefix 8`**
 One `hex_prefix` gives you 16 command codes. Split the design, or use a
@@ -37,7 +46,9 @@ The include path is wrong. It must point at the directory *containing* `inc/`,
 not at `inc/` itself.
 
 **`syntax error` on `padr++` or `uscount++`**
-The generated source is SystemVerilog. Icarus needs `-g2012`. Vivado is fine
+Old generated output. Nothing emitted now uses `++`, it is all Verilog 2001, so
+regenerate the project. If you are simulating a tree generated before that,
+`iverilog -g2012` still reads it. Vivado is fine
 provided the files are `.sv` and not `.v`.
 
 **`WARNING: $readmemh: Unable to open programs/..._program.mem`**
@@ -54,7 +65,7 @@ most likely a `JUMP` to the wrong address.
 
 **Everything happens far too fast, or at once.**
 The most likely cause is a bare data byte read as hex. `SLEEP_MS 50` written as
-`50` is `0x50`, which is 80 ms. Also check that `intr` is not held high, which
+`50` is `0x50`, which is 80 ms. Write `'d50` for 50. Also check that `intr` is not held high, which
 restarts the routine on every clock.
 
 **The pattern is right but the timing is off.**

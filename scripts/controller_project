@@ -8,12 +8,29 @@
 ## generate_controller_project. See Isabella.jl for more
 ## details.
 ##
-## usage: controller_project <yaml_filename>
+## usage: controller_project [-v] <yaml_filename>
+##
+## 9/12/26 sara: superseded by scripts/isabella.jl, kept so the old
+## flow still works. -v brings the name checking chatter back.
 ##
 ##===========================================================##
 
 
-yaml_src_file=`basename $1`
+# sara, 09/12: -v turns the debug lines back on
+verbose=0
+if [ "$1" == "-v" ]; then
+    verbose=1
+    shift
+fi
+
+function debug() {
+    if [ "$verbose" == "1" ]; then
+	printf "$1"
+    fi
+}
+
+#yaml_src_file=`basename $1`
+yaml_src_file=`basename "$1"`
 project_name=${yaml_src_file%.yaml}
 
 
@@ -22,7 +39,9 @@ printf "\n"
 printf "Project definition:     $yaml_src_file\n"
 printf "Project directory:      $project_name\n\n"
 
-if [ -d $project_name ]; then
+# sara 9/12/26, unquoted, so a path with a space broke it
+#if [ -d $project_name ]; then
+if [ -d "$project_name" ]; then
    read -p "Directory $project_name/ exists. Overwrite? (y/n): " yn
    if [ "$yn" != "y" ]; then
        printf "Exiting now.\n"
@@ -37,7 +56,7 @@ function check_project_path() {
     
     relativepath=${realfilename#$currentdir/}
 
-    printf "\n--- checking name [$1] -- relativepath=[$relativepath]\n"
+    debug "\n--- checking name [$1] -- relativepath=[$relativepath]\n"
     if [ "$relativepath" == "$1" ]; then
 	return 0
     else
@@ -50,7 +69,7 @@ function check_filename() {
 
     bname=`basename "$1"`
     if [[ ! "$bname" =~ ^[a-zA-Z0-9._-]+$ ]]; then
-       printf "\n--- filename [$1] contains bad characters\n"
+       debug "\n--- filename [$1] contains bad characters\n"
 	return 1
     fi
 
@@ -60,7 +79,7 @@ function check_filename() {
     a=${realfilename#$currentdir/}
     b=${a#$project_name/}
 
-    printf "\n--- [$b] == [$1] ? ---\n"
+    debug "\n--- [$b] == [$1] ? ---\n"
     # Verify that the realfilename is within currentdir
     if [ "$b" != "$1" ]; then
 	return 1
@@ -75,12 +94,17 @@ if [ $? != 0 ]; then
     exit 1
 fi
 
-mkdir -p $project_name/doc
-mkdir -p $project_name/inc
-mkdir -p $project_name/src
-mkdir -p $project_name/programs
+#mkdir -p $project_name/doc
+mkdir -p "$project_name/doc"
+#mkdir -p $project_name/inc
+mkdir -p "$project_name/inc"
+#mkdir -p $project_name/src
+mkdir -p "$project_name/src"
+#mkdir -p $project_name/programs
+mkdir -p "$project_name/programs"
 
-yaml=`cat $1`
+#yaml=`cat $1`
+yaml=`cat "$1"`
 num_filenames=`echo "$yaml" | yq 'length'`
 
 for i in $(seq 0 $(( $num_filenames-1 )) ); do
