@@ -154,6 +154,10 @@ JZ: begin
    // Sara (9/19/26): not taken used to land in the else below and fetch
    // one more byte. data_bytes was 2 from then on, the test above never
    // held again and padr walked the whole rom. see test/tb_register.sv
+   // 9/25 sara: he fixed this himself in fd4572c after I reported it. his
+   // version sends the three of them to CMD_DONE, except JGZ which fetches
+   // inline like this one. keeping ours: one shape for all three, and it
+   // does not need CMD_DONE, which he has agreed can go.
    //else begin
    else if (data_bytes == 1) begin
 $nxt
@@ -165,6 +169,9 @@ $nxt
 end
 JLZ: begin
    // sara 9/19: _B is a reg [7:0], so _B<0 was never true and JLZ never jumped
+   // Sara, 09/25: he said B should probably be signed, so this stays. his
+   // fd4572c still has the unsigned compare plus an else if (_B>=0) that is
+   // always true, so JLZ there can never jump at all.
    //if ((data_bytes == 1) && (_B<0)) begin
    if ((data_bytes == 1) && (\$signed(_B) < 0)) begin
       state <= CMD_START;
@@ -314,6 +321,11 @@ end
 # sara 9/17/26: Dr. Winstead's call, verilog literals with hex as the default.
 #   'h14 / 'd20 / 'b10100, the 8 in front is optional, bare digits are hex
 #   and no longer warn. 0x14 and #20 kept since the docs and tests use them.
+# 9/25/26 sara: CONFLICT, not merged. his fd4572c changed translate_program to
+#   parse(Int64,tok) and calls bare digits decimal, which is the opposite of
+#   what he wrote on 9/14. left as it is here until he picks one. the danger
+#   is not the errors, it is a jump target like "19" that assembles to 19 for
+#   him and 25 here with no complaint from either. asked, waiting.
 function parse_data_byte(tok)
     t = strip(tok)
     v = nothing
@@ -472,14 +484,26 @@ function translate_program(data,d,listing=nothing)
         end
     end
 
-    if (nbytes > 255)
-        error("program is ",nbytes," bytes, 255 is the limit")
+    # sara, 9/25/26: off by one, and his led_controller_bigger found it. pmem
+    # is [255:0] and readmemh fills 0..255, so 256 bytes is a full rom, not one
+    # too many. his program runs 0..255 and ends on NULL_CMD, which is legal.
+    # at exactly 256 the old padding also emitted a 257th line.
+    #if (nbytes > 255)
+    #    error("program is ",nbytes," bytes, 255 is the limit")
+    #end
+    if (nbytes > 256)
+        error("program is ",nbytes," bytes, 256 is the limit")
     end
     #for n in 1:(255-length(p))
-    for n in 1:(256-nbytes-1)
+    #for n in 1:(256-nbytes-1)
+    #    s=string(s,"00\n")
+    #end
+    #s=string(s,"00")
+    # one line per byte, 256 of them, no trailing newline
+    for n in 1:(256-nbytes)
         s=string(s,"00\n")
     end
-    s=string(s,"00")
+    s=chopsuffix(s,"\n")
     return s
 end
 

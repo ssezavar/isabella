@@ -253,10 +253,19 @@ done:\tLED_LEFT_SHIFT
     end
 
     @testset "program length guard" begin
-        long = join(["  $(i):\tLED_CLEAR" for i in 0:255], "\n")
+        #long = join(["  $(i):\tLED_CLEAR" for i in 0:255], "\n")
+        #@test_throws ErrorException assemble(long)
+        # 9/25/26 sara: 256 is a full rom, not an overflow. his
+        # led_controller_bigger is exactly 256 bytes and it is valid.
+        long = join(["  $(i):\tLED_CLEAR" for i in 0:256], "\n")
         @test_throws ErrorException assemble(long)
         ok = join(["  $(i):\tLED_CLEAR" for i in 0:254], "\n")
         @test length(assemble(ok)) == 256
+        # a program that exactly fills the rom, no padding left
+        full = join(["  $(i):\tLED_CLEAR" for i in 0:255], "\n")
+        out  = assemble(full)
+        @test length(out) == 256
+        @test all(b -> b == "80", out)
     end
     # Sara 9/13/26: byte for byte against the saved baseline
     @testset "golden output" begin

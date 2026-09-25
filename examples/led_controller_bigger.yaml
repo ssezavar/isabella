@@ -1,0 +1,348 @@
+---
+# From Dr. Winstead's commit fd4572c, 9/23/26. Twenty one routines in one
+# 256 byte rom, selected by iadr. Three things changed on the way in, each
+# marked below: the module name, the AND commands, and an explicit radix on
+# every data byte. Sara, 9/25/26
+# 9/25/26 sara: his file said led_controller_with_multiple_programs, the same
+# module name as the other example, so both generated a src/ file of that name
+#module: led_controller_with_multiple_programs
+module: led_controller_bigger
+inputs: |
+  input [15:0] data_in,
+outputs: |
+  output reg [15:0] led
+initial: |
+  led = data_in;
+rst: |
+  led <= data_in;
+hex_prefix: 8
+commands:
+- name: LED_CLEAR
+  databytes: 0
+  verilog: led <= 0;
+- name: LED_SET_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= data;
+- name: LED_SET_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= data;
+- name: LED_OR_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= led[7:0] | data;
+- name: LED_OR_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= led[15:8]|data;
+# sara (9/25): they AND, same as the other examples
+#- name: LED_NAND_LOW_BYTE
+- name: LED_AND_LOW_BYTE
+  databytes: 1
+  verilog: led[7:0] <= led[7:0]&data;
+#- name: LED_NAND_HIGH_BYTE
+- name: LED_AND_HIGH_BYTE
+  databytes: 1
+  verilog: led[15:8] <= led[15:8]&data;
+- name: LED_FLOOD
+  databytes: 0
+  verilog: led <= 16'hffff;
+- name: LED_RIGHT_SHIFT
+  databytes: 0
+  verilog: led <= {led[0],led[15:1]};
+- name: LED_LEFT_SHIFT
+  databytes: 0
+  verilog: led <= {led[14:0],led[15]};
+- name: LED_SET
+  databytes: 0
+  verilog: led <= data_in;
+- name: LED_NOT
+  databytes: 0
+  verilog: led <= ~led;
+- name: LED_SET_B
+  databytes: 0
+  verilog: led[7:0] <= _B;
+- name: LED_LOAD_B
+  databytes: 0
+  verilog: _B  <= data_in[7:0];
+program: |
+  # FIRST PROGRAM at iaddr 'd0 ----------------- "scan"
+  0:	LED_SET_LOW_BYTE  # set 0-7
+  1:	'd01		  # one light on
+  2:	LED_SET_HIGH_BYTE # set 8-16
+  3:	'd00		  # no lights on
+  4:	LED_LEFT_SHIFT	  # rotate light
+  5:	SLEEP_MS 	  # pause
+  6:	'd20     		  # 20ms
+  7: 	JUMP   		  # loop back
+  8:	'd04      	  # to left shift cmd
+  # SECOND PROGRAM at iaddr 'd9 ----------------- "flood"
+  9:    LED_FLOOD         # 
+  10:    NULL_CMD         # 
+  # THIRD PROGRAM at iaddr 'd10 ------------------"set"
+  11:    LED_SET          # 
+  12:    NULL_CMD         # 
+  # FOURTH PROGRAM at iaddr 'd13 ---------------- "invert"
+  13:    LED_NOT          # 
+  14:    NULL_CMD         # 
+  # FIFTH PROGRAM at iaddr 'd15 ----------------- "twinkle"
+  15:    LED_SET_LOW_BYTE   # 
+  16:    'd170                #
+  17:    LED_SET_HIGH_BYTE  #
+  18:    'd170                #
+  19:    SLEEP_MS           # 
+  20:    'd40                 # 
+  21:    LED_NOT            # 
+  22:    JUMP               # 
+  23:    'd19                 # 
+  # SIXTH PROGRAM AT iadr 'd24 --------------- "wipe"
+  24:    LED_SET_LOW_BYTE   #
+  25:    'd01                 #
+  26:    SLEEP_MS           #
+  27:    'd20                 #
+  28:    LED_LEFT_SHIFT     #
+  29:    LED_OR_LOW_BYTE    #
+  30:    'd01                 #
+  31:    JUMP               #
+  32:    'd26                 #
+  # SEVENTH PROGRAM AT iadr 'd33 -------------- "clear"
+  33:    LED_CLEAR          #
+  34:    NULL_CMD           #
+  # EIGHTH PROGRAM AT iadr 'd35 --------------- "warp"
+  35:    LED_SET_LOW_BYTE   #
+  36:    'd01                 #
+  37:    LED_SET_HIGH_BYTE  #
+  38:    'd128                #
+  39:    SLEEP_MS           #
+  40:    'd20                 #
+  41:    LED_SET_LOW_BYTE   #
+  42:    'd02                 #
+  43:    LED_SET_HIGH_BYTE  #
+  44:    'd64                 #
+  45:    SLEEP_MS           #
+  46:    'd20                 #
+  47:    LED_SET_LOW_BYTE   #
+  48:    'd04                 #
+  49:    LED_SET_HIGH_BYTE  #
+  50:    'd32                 #
+  51:    SLEEP_MS           #
+  52:    'd20                 #
+  53:    LED_SET_LOW_BYTE   #
+  54:    'd08                 #
+  55:    LED_SET_HIGH_BYTE  #
+  56:    'd16                 #
+  57:    SLEEP_MS           #
+  58:    'd20                 #
+  59:    LED_SET_LOW_BYTE   #
+  60:    'd16                 #
+  61:    LED_SET_HIGH_BYTE  #
+  62:    'd8                  #
+  63:    SLEEP_MS           #
+  64:    'd20                 #
+  65:    LED_SET_LOW_BYTE   #
+  66:    'd32                 #
+  67:    LED_SET_HIGH_BYTE  #
+  68:    'd4                  #
+  69:    SLEEP_MS           #
+  70:    'd20                 #
+  71:    LED_SET_LOW_BYTE   #
+  72:    'd64                 #
+  73:    LED_SET_HIGH_BYTE  #
+  74:    'd2                  #
+  75:    SLEEP_MS           #
+  76:    'd20                 #
+  77:    LED_SET_LOW_BYTE   #
+  78:    'd128                #
+  79:    LED_SET_HIGH_BYTE  #
+  80:    'd1                  #
+  81:    SLEEP_MS           #
+  82:    'd20                 #
+  83:    LED_CLEAR          #
+  84:    JUMP               #
+  85:    'd35                 #
+  # NINTH PROGRAM: iadr 'd86 ------------- "flash"
+  86:    LED_CLEAR          #
+  87:    SLEEP_MS           #
+  88:    'd20                 #
+  89:    LED_NOT            #
+  90:    JUMP               #
+  91:    'd87                 #
+  # TENTH PROGRAM: iadr 'd92 ------------- "blink"
+  92:    LED_FLOOD          #
+  93:    SLEEP_MS           #
+  94:    'd200                #
+  95:    LED_CLEAR          #
+  96:    SLEEP_MS           #
+  97:    'd200                #
+  98:    JUMP               #
+  99:    'd92                 #
+  # ELEVENTH PROGRAM: iadr 'd100 ---------- "blink_left"
+  100:   LED_CLEAR          #
+  101:   SLEEP_MS           #
+  102:   'd200                #
+  103:   LED_SET_LOW_BYTE   #
+  104:   'd255                #
+  105:   SLEEP_MS           #
+  106:   'd200                #
+  107:   JUMP               #
+  108:   'd100                #
+  # TWELFTH PROGRAM: iadr 'd109 ---------- "blink_right"
+  109:   LED_CLEAR          #
+  110:   SLEEP_MS           #
+  111:   'd200                #
+  112:   LED_SET_HIGH_BYTE  #
+  113:   'd255                #
+  114:   SLEEP_MS           #
+  115:   'd200                #
+  116:   JUMP               #
+  117:   'd109                #
+  # THIRTEENTH PROGRAM: iadr 'd118 -------- "count_up"
+  118:   LED_CLEAR          #
+  119:   LOAD_B             #
+  120:   'd0                  #
+  121:   LED_SET_B          #
+  122:   SLEEP_MS           #
+  123:   'd100                #
+  124:   INCR_B             #
+  125:   JUMP               #
+  126:   'd121                #
+  # FOURTEENTH PROGRAM: iadr 'd127 --------- "count_down"
+  127:   LED_CLEAR          #
+  128:   LOAD_B             #
+  129:   'd255                #
+  130:   LED_SET_B          #
+  131:   SLEEP_MS           #
+  132:   'd100                #
+  133:   DECR_B             #
+  134:   JUMP               #
+  135:   'd130                #
+  # FIFTEENTH PROGRAM: iadr 'd136 ---------- "hazard"
+  136:   LED_CLEAR          #
+  137:   SLEEP_MS           #
+  138:   'd200                #
+  139:   LED_SET_LOW_BYTE   #
+  140:   'd15                 #
+  141:   LED_SET_HIGH_BYTE  #
+  142:   'd240                #
+  143:   SLEEP_MS           #
+  144:   'd200                #
+  145:   JUMP               #
+  146:   'd136                #
+  # SIXTEENTH PROGRAM: iadr 'd147 ------------ "warp_fade"
+  147:   LED_CLEAR          #
+  148:   SLEEP_MS           #
+  149:   'd20                 #
+  150:   LED_SET_LOW_BYTE   #
+  151:   'd1                  #
+  152:   LED_SET_HIGH_BYTE  #
+  153:   'd128                #
+  154:   SLEEP_MS           #
+  155:   'd20                 #
+  156:   LED_SET_LOW_BYTE   #
+  157:   'd3                  #
+  158:   LED_SET_HIGH_BYTE  #
+  159:   'd192                #
+  160:   SLEEP_MS           #
+  161:   'd20                 #
+  162:   LED_SET_LOW_BYTE   #
+  163:   'd7                  #
+  164:   LED_SET_HIGH_BYTE  #
+  165:   'd224                #
+  166:   SLEEP_MS           #
+  167:   'd20                 #
+  168:   LED_SET_LOW_BYTE   #
+  169:   'd15                 #
+  170:   LED_SET_HIGH_BYTE  #
+  171:   'd240                #
+  172:   SLEEP_MS           #
+  173:   'd20                 #
+  174:   LED_SET_LOW_BYTE   #
+  175:   'd31                 #
+  176:   LED_SET_HIGH_BYTE  #
+  177:   'd248                #
+  178:   SLEEP_MS           #
+  179:   'd20                 #
+  180:   LED_SET_LOW_BYTE   #
+  181:   'd63                 #
+  182:   LED_SET_HIGH_BYTE  #
+  183:   'd252                #
+  184:   SLEEP_MS           #
+  185:   'd20                 #
+  186:   LED_SET_LOW_BYTE   #
+  187:   'd127                #
+  188:   LED_SET_HIGH_BYTE  #
+  189:   'd254                #
+  190:   SLEEP_MS           #
+  191:   'd20                 #
+  192:   LED_FLOOD          #
+  193:   SLEEP_MS           #
+  194:   'd100                #
+  195:   JUMP               #
+  196:   'd147                #
+  # SEVENTEENTH PROGRAM: iadr = d'197 ------------ "thermometer"
+  197:   LED_LOAD_B         #
+  198:   LED_CLEAR          #
+  199:   JZ                 #
+  200:   'd209                #
+  201:   LED_OR_LOW_BYTE    #
+  202:   'd1                  #
+  203:   DECR_B             #
+  204:   JZ                 #
+  205:   'd209                #
+  206:   LED_LEFT_SHIFT     #
+  207:   JUMP               #
+  208:   'd201                #
+  209:   SLEEP_MS           #
+  210:   'd100                #
+  211:   JUMP               #
+  212:   'd197                #
+  # EIGHTEENTH PROGRAM: iadr = d'213 ----------------- "missile"
+  213:   LED_LOAD_B         #
+  214:   LED_CLEAR          #
+  215:   JZ                 #
+  216:   'd225                #
+  217:   LED_OR_LOW_BYTE    #
+  218:   'd1                  #
+  219:   DECR_B             #
+  220:   JZ                 #
+  221:   'd225                #
+  222:   LED_LEFT_SHIFT     #
+  223:   JUMP               #
+  224:   'd217                #
+  225:   SLEEP_MS           #
+  226:   'd20                 #
+  227:   LED_LEFT_SHIFT     #
+  228:   JUMP               #
+  229:   'd225                #
+  # NINETEENTH PROGRAM: iadr='d230 ------------------- "inchworm"
+  230:   LED_CLEAR          #
+  231:   LED_SET_LOW_BYTE   #
+  232:   'd3                  #
+  233:   LED_LEFT_SHIFT     #
+  234:   SLEEP_MS           #
+  235:   'd20                 #
+  236:   LED_LEFT_SHIFT     #
+  237:   SLEEP_MS           #
+  238:   'd20                 #
+  239:   LED_RIGHT_SHIFT    #
+  240:   SLEEP_MS           #
+  241:   'd30                 #
+  242:   JUMP               #
+  243:   'd233                #
+  # TWENTIETH PROGRAM: iadr='d244 ------------------- "dim"
+  244:   LED_CLEAR          #
+  245:   SLEEP_MS           #
+  246:   'd4                  #
+  247:   LED_FLOOD          #
+  248:   SLEEP_MS           #
+  249:   'd2                  #
+  250:   JUMP               #
+  251:   'd244                #
+  # TWENTYFIRST PROGRAM: iadr='d252 ------------------ "alarm" 
+  252:   LED_LOAD_B         #
+  253:   JZ                 #
+  254:   'd86                 #jump to "flash" program if zero
+  255:   NULL_CMD           # 
+...
+
+
+
+
+

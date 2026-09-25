@@ -32,8 +32,8 @@ Rename yours.
 One `hex_prefix` gives you 16 command codes. Split the design, or use a
 different prefix for a second controller.
 
-**`error: program is 260 bytes, 255 is the limit`**
-The ROM is 256 bytes and the last one is reserved. Shorten the program, or move
+**`error: program is 260 bytes, 256 is the limit`**
+The ROM is 256 bytes, so that is the whole of it. Shorten the program, or move
 work into the command bodies.
 
 ## Synthesis and simulation

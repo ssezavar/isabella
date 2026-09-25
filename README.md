@@ -5,7 +5,7 @@ Developed for Digital Design instruction at Utah State University.
 
 Isabella generates controllers can be used to program peripheral interfaces and behaviors 
 in FPGA designs, without requiring an embedded microprocessor. The designer specifies a 
-list of 8-bit command codes and the registers they control. Programs of up to 255 bytes 
+list of 8-bit command codes and the registers they control. Programs of up to 256 bytes 
 are supported. Very basic looping and branching instructions are provided as part of the
 base instruction set. 
 
@@ -288,10 +288,14 @@ top/       a top module skeleton, ports already wired
 sim/       a testbench that runs your program
 ```
 
-There is a second example too, `examples/seven_segment.yaml`, which drives the
-Basys3 four digit display. Its refresh loop is the program itself rather than a
-counter in Verilog, and it uses symbolic labels instead of hand counted
-addresses.
+The examples, shortest first:
+
+| file | what it shows |
+|---|---|
+| `controller_with_shift.yaml` | the smallest useful controller, one routine |
+| `controller_with_multiple_programs.yaml` | four routines in one ROM, picked with `iadr` |
+| `seven_segment.yaml` | the Basys3 four digit display. The refresh loop is the program itself rather than a counter in Verilog, and it uses symbolic labels instead of hand counted addresses |
+| `led_controller_bigger.yaml` | twenty one routines filling all 256 bytes, and the only one that uses `JZ` and the `_B` register |
 
 Options:
 

@@ -157,9 +157,10 @@ program runs out mid command, generation stops rather than emitting a ROM that
 is shifted by one. A `JUMP` past the end of the program warns, since it will
 land in the zero padding and stop.
 
-Maximum program length is 255 bytes. The rest of the 256-byte ROM is padded
-with `0x00`, which is `NULL_CMD`, so a program that runs off the end stops
-cleanly.
+Maximum program length is 256 bytes, the whole ROM. Anything short of that is
+padded with `0x00`, which is `NULL_CMD`, so a program that runs off the end
+stops cleanly. A program that fills all 256 bytes has no padding left, so every
+routine in it has to end in `NULL_CMD` or a jump.
 
 ### Data byte radix
 

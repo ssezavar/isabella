@@ -45,6 +45,17 @@ jobs:
           iverilog -I. -o top.vvp top/led_controller_with_multiple_programs_top.sv \
                    src/timer.sv src/led_controller_with_multiple_programs.sv
 
+      # 9/25/26 sara: his led_controller_bigger, 21 routines and a full 256
+      # byte rom. the only example that uses JZ and the _B register.
+      - name: generate and elaborate led_controller_bigger
+        run: |
+          julia --project=. scripts/isabella.jl examples/led_controller_bigger.yaml \
+                -o build/bigger -f -q
+          cd build/bigger
+          iverilog -I. -o elab.vvp src/timer.sv src/led_controller_bigger.sv
+          iverilog -I. -o top.vvp top/led_controller_bigger_top.sv \
+                   src/timer.sv src/led_controller_bigger.sv
+
       # the seven segment example: generate, elaborate, and actually run it
       - name: generate and simulate seven_segment
         run: |
