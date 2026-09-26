@@ -14,11 +14,11 @@ The whole controller is one file. The interesting part is the program:
 ```yaml
 program: |
   refresh: SEG_PATTERN
-           0x79           # 1
+           'h79           # 1
            SEG_DIGIT
-           0x00           # rightmost digit
+           'h00           # rightmost digit
            SLEEP_MS
-           0x04
+           'h04
   ...
            JUMP
            refresh
@@ -66,9 +66,9 @@ The listing beside it is the one to read:
 # listing for seven_segment, 26 bytes
 # addr  byte  source
   00    81  refresh: SEG_PATTERN
-  01    79  0x79           # 1
+  01    79  'h79           # 1
   02    80  SEG_DIGIT
-  03    00  0x00           # rightmost digit
+  03    00  'h00           # rightmost digit
 ```
 
 and at the bottom, where each label landed:

@@ -103,7 +103,7 @@ Multiple routines live in one ROM. Give each a start address and end it with
 
 ```
   0:	LED_SET_LOW_BYTE   # routine A
-  1:	0x0F
+  1:	'h0F
   2:	NULL_CMD
   3:	LED_FLOOD          # routine B, start it with iadr = 3
   4:	NULL_CMD

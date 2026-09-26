@@ -40,6 +40,7 @@ commands:
     an  <= 4'b1111;
         seg <= 7'b1111111;
 program: |
+  # sara 9/25/26: the data bytes were 0x.., verilog literals now ('h..), same bytes
   # show 1234, one digit at a time, 4 ms each.
   # four digits at 4 ms is a 62 Hz refresh, above the flicker threshold.
   #
@@ -48,32 +49,32 @@ program: |
   # digit's pattern for about 50 ns. Invisible, but it is real ghosting and the
   # fix is free: load the segments, then turn the digit on.
   refresh: SEG_PATTERN
-           0x79           # 1
+           'h79           # 1
            SEG_DIGIT
-           0x00           # rightmost digit
+           'h00           # rightmost digit
            SLEEP_MS
-           0x04
+           'h04
 
            SEG_PATTERN
-           0x24           # 2
+           'h24           # 2
            SEG_DIGIT
-           0x01
+           'h01
            SLEEP_MS
-           0x04
+           'h04
 
            SEG_PATTERN
-           0x30           # 3
+           'h30           # 3
            SEG_DIGIT
-           0x02
+           'h02
            SLEEP_MS
-           0x04
+           'h04
 
            SEG_PATTERN
-           0x19           # 4
+           'h19           # 4
            SEG_DIGIT
-           0x03           # leftmost digit
+           'h03           # leftmost digit
            SLEEP_MS
-           0x04
+           'h04
 
            JUMP
            refresh

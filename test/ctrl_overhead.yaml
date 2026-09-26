@@ -23,6 +23,7 @@ commands:
   databytes: 0
   verilog: led <= 16'hffff;
 program: |
+  # sara (9/25): 'h not 0x now, the assembler only takes verilog literals
   # 0: ten commands with no data byte, then stop
   zero_run: LED_BUMP
             LED_BUMP
@@ -38,30 +39,30 @@ program: |
             NULL_CMD
   # 12: ten commands that each take one data byte, then stop
   one_run:  LED_SET_LOW_BYTE
-            0x01
+            'h01
             LED_SET_LOW_BYTE
-            0x02
+            'h02
             LED_SET_LOW_BYTE
-            0x03
+            'h03
             LED_SET_LOW_BYTE
-            0x04
+            'h04
             LED_SET_LOW_BYTE
-            0x05
+            'h05
             LED_SET_LOW_BYTE
-            0x06
+            'h06
             LED_SET_LOW_BYTE
-            0x07
+            'h07
             LED_SET_LOW_BYTE
-            0x08
+            'h08
             LED_SET_LOW_BYTE
-            0x09
+            'h09
             LED_SET_LOW_BYTE
-            0x0A
+            'h0A
             LED_DONE
             NULL_CMD
   # 34: a sleep loop, ten iterations of SLEEP_US 5 measured by the testbench
   sleep_run: SLEEP_US
-             0x05
+             'h05
              LED_BUMP
              JUMP
              sleep_run

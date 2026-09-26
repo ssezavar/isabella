@@ -58,16 +58,21 @@ end
 
     @testset "G3 padding" begin
         # $readmemh(...,0,255) wants 256 bytes. this used to give 254.
+        # sara 9/25: bare bytes are refused now, the old lines stay as comments
         out = assemble("""
   0:\tLED_SET_LOW_BYTE  # set 0-7
-  1:\t01\t\t  # one light on
+  #1:\t01\t\t  # one light on
+  1:\t'h01\t\t  # one light on
   2:\tLED_SET_HIGH_BYTE # set 8-16
-  3:\t00\t\t  # no lights on
+  #3:\t00\t\t  # no lights on
+  3:\t'h00\t\t  # no lights on
   4:\tLED_LEFT_SHIFT\t  # rotate light
   5:\tSLEEP_MS \t  # pause
-  6:\t20     \t\t  # 20ms
+  #6:\t20     \t\t  # 20ms
+  6:\t'h20     \t\t  # 20ms
   7: \tJUMP   \t\t  # loop back
-  8:\t04      \t  # to left shift cmd
+  #8:\t04      \t  # to left shift cmd
+  8:\t'd4      \t  # to left shift cmd
 """)
         @test length(out) == 256
         @test out[1:9] == ["81","01","82","00","89","02","20","04","04"]
@@ -80,7 +85,8 @@ end
   0:\tLED_CLEAR
   1:\tLED_FLOOD
   2:\tSLEEP_MS
-  3:\t0x14
+  #3:\t0x14
+  3:\t'h14
 """)
         @test out[1:4] == ["80","87","02","14"]
         @test length(out) == 256
@@ -100,18 +106,25 @@ end
     end
 
     @testset "G4 data byte radix" begin
-        @test Isabella.parse_data_byte("0x14")  == "14"
+        # Sara 9/25/26: F10, verilog literals only. 0x, # and bare all refused
+        #@test Isabella.parse_data_byte("0x14")  == "14"
+        @test Isabella.parse_data_byte("0x14")  === nothing
         @test Isabella.parse_data_byte("8'h14") == "14"
         @test Isabella.parse_data_byte("8'd20") == "14"   # 20 decimal
-        @test Isabella.parse_data_byte("#20")   == "14"
+        #@test Isabella.parse_data_byte("#20")   == "14"
+        @test Isabella.parse_data_byte("#20")   === nothing
         @test Isabella.parse_data_byte("zz")    === nothing
-        @test Isabella.parse_data_byte("0xFF")  == "FF"
+        #@test Isabella.parse_data_byte("0xFF")  == "FF"
+        @test Isabella.parse_data_byte("0xFF")  === nothing
+        @test Isabella.parse_data_byte("'hFF")  == "FF"
 
         # bare digits still read as hex, but they warn now
         #@test (@test_logs (:warn,) Isabella.parse_data_byte("20")) == "20"
         # Sara (9/17): hex is the default now, per Dr. Winstead. no warning,
         # and verilog literals with or without the size
-        @test (@test_logs Isabella.parse_data_byte("20")) == "20"
+        #@test (@test_logs Isabella.parse_data_byte("20")) == "20"
+        # sara 9/25: and now not at all, his 9/25 answer
+        @test Isabella.parse_data_byte("20")    === nothing
         @test Isabella.parse_data_byte("'h14")       == "14"
         @test Isabella.parse_data_byte("'d20")       == "14"
         @test Isabella.parse_data_byte("'b10100")    == "14"
@@ -121,6 +134,19 @@ end
 
         # junk in the program is an error instead of a corrupt ROM
         @test_throws ErrorException assemble("  0:\tNOT_A_COMMAND\n")
+
+        # sara (9/25): the old forms stop the build and say what to write.
+        # "19" is the case that started this, 19 to him and 25 to us.
+        @test_throws r"write 'h19 for hex or 'd19 for decimal" assemble("\tJUMP\n\t19\n")
+        @test_throws r"write 'h14$" assemble("\tSLEEP_MS\n\t0x14\n")
+        @test_throws r"write 'd170$" assemble("\tSLEEP_MS\n\t170\n")
+        @test_throws r"write 'h0A$" assemble("\tSLEEP_MS\n\t0A\n")
+        # no hint when there is nothing sensible to suggest
+        @test_throws r"not a known command or a valid byte" assemble("\tSLEEP_MS\n\t256\n")
+        @test_throws r"not a known command or a valid byte" assemble("\tSLEEP_MS\n\tFF\n")
+        # the literal forms of the same bytes are fine
+        @test assemble("\tJUMP\n\t'd1\n")[1:2] == ["04","01"]
+        @test assemble("\tSLEEP_MS\n\t'd170\n")[1:2] == ["02","AA"]
     end
 
     # sara 9/5/26: not behaviour, just that our edits survived. the timer is
@@ -179,17 +205,20 @@ end
         # and running out of program mid command
         @test_throws ErrorException assemble("  0:\tLED_SET_LOW_BYTE\n")
         # the correct version still assembles
-        @test assemble("  0:\tLED_SET_LOW_BYTE\n  1:\t0x01\n")[1:2] == ["81","01"]
+        #@test assemble("  0:\tLED_SET_LOW_BYTE\n  1:\t0x01\n")[1:2] == ["81","01"]
+        @test assemble("  0:\tLED_SET_LOW_BYTE\n  1:\t'h01\n")[1:2] == ["81","01"]   # 9/25 sara, F10
 
         # a jump off the end warns, it does not refuse
-        @test (@test_logs (:warn,) assemble("  0:\tJUMP\n  1:\t0x40\n"))[1:2] == ["04","40"]
+        #@test (@test_logs (:warn,) assemble("  0:\tJUMP\n  1:\t0x40\n"))[1:2] == ["04","40"]
+        @test (@test_logs (:warn,) assemble("  0:\tJUMP\n  1:\t'h40\n"))[1:2] == ["04","40"]
     end
 
     # Sara, 9/7/26: labels by name, so nobody counts jump targets by hand
     @testset "F3 symbolic labels" begin
         out = assemble("""
 start:\tLED_SET_LOW_BYTE
-\t0x01
+#\t0x01
+\t'h01
 loop:\tLED_LEFT_SHIFT
 \tJUMP
 \tloop
@@ -282,7 +311,8 @@ done:\tLED_LEFT_SHIFT
     # sara 9/14/26: the listing has to agree with the .mem, byte for byte
     @testset "listing file" begin
         d = demo()
-        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        #d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t'h0F\n"   # sara 9/25/26
         Isabella.generate_command_codes!(d)
         cc  = Isabella.command_code_dict(d)
         lst = Isabella.program_listing(d,cc)
@@ -310,7 +340,8 @@ done:\tLED_LEFT_SHIFT
     # so the guard is on the output, not on any one of them.
     @testset "generated source is verilog 2001" begin
         d = demo()
-        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        #d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t0x0F\n"
+        d["program"] = "  0:\tLED_SET_LOW_BYTE\n  1:\t'h0F\n"
         for f in Isabella.generate_controller_project(d)
             endswith(f["filename"], ".md") && continue
             #live = [l for l in split(f["contents"], "\n") if !startswith(strip(l), "//")]
@@ -357,7 +388,8 @@ body:\tLED_LEFT_SHIFT
         @test loop[1:7] == ["12","03","89","14","1A","02","00"]
 
         # and gets the same off the end warning, naming itself
-        @test_logs (:warn, r"^JZ at address") assemble("\tJZ\n\t0x40\n")
+        #@test_logs (:warn, r"^JZ at address") assemble("\tJZ\n\t0x40\n")
+        @test_logs (:warn, r"^JZ at address") assemble("\tJZ\n\t'h40\n")
 
         # LOAD_A owes a byte, INCR_B does not
         @test_throws ErrorException assemble("\tLOAD_A\n\tLED_CLEAR\n")

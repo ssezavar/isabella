@@ -15,9 +15,12 @@ Either a mnemonic that is not in your `commands:` list, usually a typo or a case
 difference, or a data byte in a form the assembler does not accept. See the
 radix table in [yaml_schema.md](yaml_schema.md).
 
-**A sleep or a data byte is bigger than you wrote.**
-Bare digits are hex. `20` in the program means 0x20, which is 32. Write `'d20`
-if you meant 20 decimal. The full radix table is in
+**`error: program line "6:	20": "20" has no radix. data bytes are Verilog literals, write 'h20 for hex or 'd20 for decimal`**
+A data byte without a radix. Write `'d20` for twenty or `'h20` for thirty two.
+The same error, with the matching suggestion, comes back for `0x14` and for a
+three digit number like `170`. Bare numbers used to be read as hex and are
+refused now, because a jump target like `19` meant a different address
+depending on who read it. The full radix table is in
 [yaml_schema.md](yaml_schema.md).
 
 **`error: hex_prefix 1 is not usable. 0 and 1 belong to the built-in commands, and it must fit one hex digit, so 2 to f`**
@@ -64,9 +67,9 @@ controller. If it goes low and stays low, the program is running but stuck,
 most likely a `JUMP` to the wrong address.
 
 **Everything happens far too fast, or at once.**
-The most likely cause is a bare data byte read as hex. `SLEEP_MS 50` written as
-`50` is `0x50`, which is 80 ms. Write `'d50` for 50. Also check that `intr` is not held high, which
-restarts the routine on every clock.
+Check that `intr` is not held high, which restarts the routine on every clock.
+If a sleep is there but the wrong length, check its radix: `'h50` is 80 ms,
+`'d50` is 50.
 
 **The pattern is right but the timing is off.**
 Two known causes. Sleeps carry a few clocks of instruction overhead on top of

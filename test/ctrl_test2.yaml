@@ -29,10 +29,11 @@ commands:
   databytes: 0
   verilog: led <= {led[14:0],led[15]};
 program: |
+  # Sara (9/25): 'h.. replaces 0x.., literals only
   0:	LED_SET_LOW_BYTE  # routine A at address 0
-  1:	0x0F
+  1:	'h0F
   2:	LED_SET_HIGH_BYTE
-  3:	0xF0              # led should end up F00F
+  3:	'hF0              # led should end up F00F
   4:	NULL_CMD          # stop, back to WAIT
   5:	LED_FLOOD         # routine B at address 5
   6:	NULL_CMD          # stop

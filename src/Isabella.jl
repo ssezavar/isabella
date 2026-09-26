@@ -326,26 +326,31 @@ end
 #   what he wrote on 9/14. left as it is here until he picks one. the danger
 #   is not the errors, it is a jump target like "19" that assembles to 19 for
 #   him and 25 here with no complaint from either. asked, waiting.
+# Sara 9/25: settled, and it was neither. his answer: verilog literals only,
+#   'h0A or 'd10, every line a command name or a literal. so bare digits are
+#   refused now, and 0x14 and #20 go too, they were never verilog. (#20 never
+#   worked in a program anyway, the comment strip ate it before it got here.)
 function parse_data_byte(tok)
     t = strip(tok)
     v = nothing
 
-    if occursin(r"^0[xX][0-9a-fA-F]{1,2}$", t)
-        v = parse(Int,t[3:end],base=16)
+#   if occursin(r"^0[xX][0-9a-fA-F]{1,2}$", t)
+#       v = parse(Int,t[3:end],base=16)
 #   elseif occursin(r"^8'[hH][0-9a-fA-F]{1,2}$", t)
 #       v = parse(Int,t[4:end],base=16)
 #   elseif occursin(r"^8'[dD][0-9]{1,3}$", t)
 #       v = parse(Int,t[4:end],base=10)
-    elseif (m = match(r"^8?'[hH]([0-9a-fA-F]{1,2})$", t)) !== nothing
+#   elseif (m = match(r"^8?'[hH]([0-9a-fA-F]{1,2})$", t)) !== nothing
+    if (m = match(r"^8?'[hH]([0-9a-fA-F]{1,2})$", t)) !== nothing
         v = parse(Int,m.captures[1],base=16)
     elseif (m = match(r"^8?'[dD]([0-9]{1,3})$", t)) !== nothing
         v = parse(Int,m.captures[1],base=10)
     elseif (m = match(r"^8?'[bB]([01]{1,8})$", t)) !== nothing
         v = parse(Int,m.captures[1],base=2)
-    elseif occursin(r"^#[0-9]{1,3}$", t)
-        v = parse(Int,t[2:end],base=10)
-    elseif occursin(r"^[0-9a-fA-F]{1,2}$", t)
-        v = parse(Int,t,base=16)
+#   elseif occursin(r"^#[0-9]{1,3}$", t)
+#       v = parse(Int,t[2:end],base=10)
+#   elseif occursin(r"^[0-9a-fA-F]{1,2}$", t)
+#       v = parse(Int,t,base=16)
 #       @warn "byte \"$t\" has no radix, reading it as hex ($v decimal). write 0x$t or #$v"
     else
         return nothing
@@ -355,6 +360,23 @@ function parse_data_byte(tok)
         error("data byte out of range: ",t)
     end
     return uppercase(string(v,base=16,pad=2))
+end
+
+
+# sara (9/25/26): for the error only. a number with no radix is the old habit,
+# so say exactly what to write instead of "not a valid byte"
+function radix_hint(tok)
+    t = strip(tok)
+    if occursin(r"^0[xX][0-9a-fA-F]{1,2}$", t)
+        return "write 'h$(t[3:end])"
+    elseif occursin(r"^[0-9]{1,2}$", t)
+        return "write 'h$t for hex or 'd$t for decimal"
+    elseif occursin(r"^[0-9][0-9a-fA-F]$", t)
+        return "write 'h$t"
+    elseif occursin(r"^[0-9]{3}$", t) && parse(Int,t) <= 255
+        return "write 'd$t"
+    end
+    return nothing
 end
 
 
@@ -452,6 +474,10 @@ function translate_program(data,d,listing=nothing)
                 end
                 b=parse_data_byte(c[2])
                 if (b == nothing)
+                    hint = radix_hint(c[2])   # 9/25 sara
+                    if (hint !== nothing)
+                        error("program line \"",strip(x),"\": \"",c[2],"\" has no radix. data bytes are Verilog literals, ",hint)
+                    end
                     error("program line \"",strip(x),"\": \"",c[2],"\" is not a known command or a valid byte")
                 end
                 if (pending > 0)

@@ -123,10 +123,10 @@ The label is optional, and it can be a **name** instead of a number:
 ```
 program: |
   start:  LED_SET_LOW_BYTE
-          0x01
+          'h01
   loop:   LED_LEFT_SHIFT
           SLEEP_MS
-          0x20
+          'd20
           JUMP
           loop           # no address to work out
 ```
@@ -142,14 +142,14 @@ Count carefully, a command taking a data byte occupies two addresses.
 ```
 program: |
   0:	LED_SET_LOW_BYTE   # command at address 0
-  1:	0x01               # its data byte, address 1
+  1:	'h01               # its data byte, address 1
   2:	LED_LEFT_SHIFT     # address 2
   3:	JUMP
-  4:	0x02               # jump back to address 2
+  4:	'd2                # jump back to address 2
 ```
 
-Comments are optional, and so is the label. A bare token on its own line is
-fine.
+Comments are optional, and so is the label. A line holding just a command or
+just a data byte is fine.
 
 The generator also checks that every command gets the data bytes it declared. If
 a command is followed by another mnemonic when it was still owed a byte, or the
@@ -164,21 +164,22 @@ routine in it has to end in `NULL_CMD` or a jump.
 
 ### Data byte radix
 
-Data bytes are written like Verilog literals, and **hex is the default**: a
-bare `20` means 0x20, which is 32 decimal. Put a radix in front when you mean
-something else.
+Data bytes are Verilog literals, and **the radix is required**. There is no
+default: a bare `20` is an error, because it reads as 20 to some people and 32
+to others, and a jump target that means two different addresses fails with no
+warning at all.
 
 | you write | value |
 |---|---|
-| `14` | 20 (hex is the default) |
 | `'h14` or `8'h14` | 20 |
 | `'d20` or `8'd20` | 20 |
 | `'b10100` or `8'b00010100` | 20 |
-| `0x14` | 20 |
-| `#20` | 20 |
 
 The size prefix is optional and only `8` is accepted. Anything over 255 is an
-error, and anything that matches none of these rows is rejected as a bad token.
+error. A bare number, `0x14` and `#20` are all rejected, and the error names
+the literal to write instead. A program line is a command, a data byte in one
+of these forms, or a label name used as a jump target. The generated `.mem` is
+always hex.
 
 ## See also
 

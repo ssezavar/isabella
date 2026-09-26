@@ -30,13 +30,14 @@ commands:
   databytes: 0
   verilog: led <= {led[14:0],led[15]};
 program: |
+  # Sara 9/25: 0x.. became 'h.., bare and 0x bytes are refused now
   0:	LED_SET_LOW_BYTE  # led[7:0] <= 1
-  1:	0x01
+  1:	'h01
   2:	SLEEP_US          # settle
-  3:	0x05              # 5 us
+  3:	'h05              # 5 us
   4:	LED_LEFT_SHIFT    # rotate
   5:	SLEEP_US
-  6:	0x05              # 5 us
+  6:	'h05              # 5 us
   7:	JUMP              # loop back to the shift
-  8:	0x04
+  8:	'h04
 ...

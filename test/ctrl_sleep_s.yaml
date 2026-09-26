@@ -22,9 +22,10 @@ commands:
   databytes: 0
   verilog: led <= 16'hffff;
 program: |
+  # 9/25 sara: 0x01 -> 'h01, literals only
   0:	LED_CLEAR
   1:	SLEEP_S
-  2:	0x01        # one second
+  2:	'h01        # one second
   3:	LED_FLOOD
   4:	NULL_CMD
 ...

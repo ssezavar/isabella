@@ -160,23 +160,26 @@ program line has this format:
 
 `<line_number>: <COMMAND_NAME | DATA_BYTE>  [# COMMENT]`
 
+A `DATA_BYTE` is a Verilog literal such as `'h01`, `'d20` or `'b00000001`. The
+radix is required, so a bare number is an error.
+
 The example program sets the LEDs to `h01` in lines 0--3. At line 4, the LED
 values are shifted to the left. Lines 5--6 put the program to sleep for 20
-milliseconds. The byte is written `'d20` because a bare number is read as hex,
-so a bare `20` would have meant 32 ms. Lines 7--8 loop back to line 4, creating an
+milliseconds. The byte is written `'d20` because data bytes need a radix: a bare
+`20` could mean 20 or 32, so it is refused. Lines 7--8 loop back to line 4, creating an
 infinite loop where the single illuminated LED is shifted continuously to the 
 left.
 
 ```
   0:	LED_SET_LOW_BYTE  # set 0-7
-  1:	01		          # one light on
+  1:	'h01		          # one light on
   2:	LED_SET_HIGH_BYTE # set 8-16
-  3:	00		          # no lights on
+  3:	'h00		          # no lights on
   4:	LED_LEFT_SHIFT	  # rotate light
   5:	SLEEP_MS 	      # pause
   6:	'd20   		      # 20ms
   7: 	JUMP   		      # loop back
-  8:	04      	      # to left shift cmd
+  8:	'd4      	      # to left shift cmd
 ```
 
 ## Second Example: LED Controller with Multiple Programs
@@ -223,14 +226,14 @@ Here are the new programs:
 program: |
   # FIRST PROGRAM at iaddr 'd0
   0:	LED_SET_LOW_BYTE  # set 0-7
-  1:	01		  # one light on
+  1:	'h01		  # one light on
   2:	LED_SET_HIGH_BYTE # set 8-16
-  3:	00		  # no lights on
+  3:	'h00		  # no lights on
   4:	LED_LEFT_SHIFT	  # rotate light
   5:	SLEEP_MS 	  # pause
   6:	'd20   		  # 20ms
   7: 	JUMP   		  # loop back
-  8:	04      	  # to left shift cmd
+  8:	'd4      	  # to left shift cmd
   # SECOND PROGRAM at iaddr 'd9
   9:    LED_FLOOD         # all leds on
   10:    NULL_CMD         # wait for next intr

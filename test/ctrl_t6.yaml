@@ -32,23 +32,24 @@ commands:
   databytes: 0
   verilog: led <= 16'hffff;
 program: |
+  # Sara, 9/25/26: data bytes in verilog form now, they were 0x..
   0:	LED_TWO            # routine A, consumes two data bytes
-  1:	0xAA               # first, command body never sees this one
-  2:	0xBB               # second, this is what lands in data
+  1:	'hAA               # first, command body never sees this one
+  2:	'hBB               # second, this is what lands in data
   3:	LED_SET_HIGH_BYTE  # only runs if both bytes above were consumed
-  4:	0xCC
+  4:	'hCC
   5:	NULL_CMD           # led should be CCBB
   6:	LED_CLEAR          # routine B, SLEEP_MS through the FSM
   7:	SLEEP_MS
-  8:	0x01               # 1 ms
+  8:	'h01               # 1 ms
   9:	LED_FLOOD
   10:	NULL_CMD
   11:	LED_SET_LOW_BYTE   # routine C, the interrupt target
-  12:	0x77
+  12:	'h77
   13:	NULL_CMD
   14:	LED_CLEAR          # routine D, long sleep to be interrupted
   15:	SLEEP_MS
-  16:	0x64               # 100 ms
+  16:	'h64               # 100 ms
   17:	LED_FLOOD          # must NOT run if the sleep is cut short
   18:	NULL_CMD
 ...
